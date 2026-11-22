@@ -225,6 +225,13 @@ a.chip, .who a.u, .urow a { text-decoration: none; color: inherit; }
 .hx-more .hx-cta { width: 100%; }
 .hx-more .hx-cta .btn { color: var(--paper); } .hx-more .hx-cta .btn.ghost { color: var(--ink); }
 .mhelp { display: none; }
+/* グループの切り替え（横に並ぶボタン） */
+.gswitch { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--hair); }
+.gswitch button { flex: none; font: inherit; font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 99px; border: 1px solid var(--hair); background: var(--paper); color: var(--ink); cursor: pointer; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; touch-action: manipulation; }
+.gswitch button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.gswitch button.add { border-style: dashed; color: var(--muted); font-weight: 500; }
+.gswitch button.add.on { border-style: solid; color: var(--paper); }
+.create-panel { margin-bottom: 20px; }
 /* 招待リンクを貼り付けて参加 */
 .paste-join, .tip-panel { margin-bottom: 20px; }
 .paste-join { border: 2px solid var(--ink); }

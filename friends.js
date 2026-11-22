@@ -365,13 +365,18 @@ async function groupView(gid, key) {
   groupScreen();
 }
 
-const groupSelectHtml = () => {
+// グループの切り替え：入っているグループをボタンで並べ、その後ろに「＋ 新しく作る」「🔗 招待で参加」
+// mode：今いる画面（"new" = 作る画面、"join" = 参加の画面、それ以外 = グループの中）
+const groupSelectHtml = (mode) => {
   const gs = loadGroups();
-  return `<select id="gSel" aria-label="グループを選ぶ">${gs.map(g => `<option value="${esc(g.gid)}" ${current && g.gid === current.gid ? "selected" : ""}>${esc(g.name || "（参加前）")}</option>`).join("")}<option value="__join">🔗 招待リンクで参加する</option><option value="__new">＋ グループを作る</option></select>`;
+  return `<div class="gswitch" role="tablist" aria-label="グループを選ぶ">${gs.map(g => `<button type="button" data-g="${esc(g.gid)}" class="${!mode && current && g.gid === current.gid ? "on" : ""}">${esc(g.name || "（参加前）")}</button>`).join("")}<button type="button" data-g="__new" class="add ${mode === "new" ? "on" : ""}">＋ 新しく作る</button><button type="button" data-g="__join" class="add ${mode === "join" ? "on" : ""}">🔗 招待で参加</button></div>`;
 };
 function bindGroupSelect() {
-  const s = $("gSel"); if (!s) return;
-  s.onchange = () => { stop(); if (s.value === "__join" || s.value === "__new") return welcome(s.value === "__join"); const g = loadGroups().find(x => x.gid === s.value); if (g) groupView(g.gid, g.key); };
+  root.querySelectorAll(".gswitch [data-g]").forEach(b => b.onclick = () => {
+    stop(); const v = b.dataset.g;
+    if (v === "__new" || v === "__join") return welcome(v.slice(2));
+    const g = loadGroups().find(x => x.gid === v); if (g) groupView(g.gid, g.key);
+  });
 }
 
 // ===== 招待リンクを貼り付けて参加 =====
@@ -421,24 +426,27 @@ function readWho(prefix) {
   return nickname ? { nickname, icon: whoDraft.icon, color: whoDraft.color } : null;
 }
 
-function welcome(focusJoin) {
+// mode："new" = 新しく作る画面（作る欄が上）、"join" = 招待で参加の画面（貼り付け欄が上）
+function welcome(mode) {
   current = null;
   whoDraft = { icon: pickOne(EMOJIS), color: pickOne(COLORS) };
   const has = loadGroups().length;
-  root.innerHTML = `
-    ${has ? `<div class="bar"><h2>グループ</h2>${groupSelectHtml()}</div>` : ""}
-    ${pasteJoinHtml()}
-    <div class="panel">
-      <h2>➕ 自分でグループを作る</h2>
-      <p>仲のいい友達だけのグループを作れます。作ったあとに出る招待リンクを LINE などで送ると、友達はそのリンクを開くだけで参加できます。メールアドレスもパスワードも要りません。</p>
+  const createHtml = `
+    <div class="panel create-panel">
+      <h2>➕ ${has ? "新しいグループを作る" : "自分でグループを作る"}</h2>
+      <p>仲のいい友達だけのグループを作れます。${has ? "グループはいくつでも作れます（例：クラスの友達、部活、家族など）。" : ""}作ったあとに出る招待リンクを LINE などで送ると、友達はそのリンクを開くだけで参加できます。メールアドレスもパスワードも要りません。</p>
       <label>グループの名前<input id="gName" maxlength="30" placeholder="例：いつもの4人"></label>
       ${whoHtml("g")}
       <div class="actions"><button class="btn" id="gCreate">グループを作る</button><span class="msg" id="gMsg"></span></div>
       <p class="note">グループの投稿は、メンバーとサイトの管理者にしか見えません。</p>
     </div>`;
+  root.innerHTML = `
+    ${has ? groupSelectHtml(mode === "join" ? "join" : "new") : ""}
+    ${mode === "new" ? createHtml + pasteJoinHtml() : pasteJoinHtml() + createHtml}`;
   if (!myProfile) bindPicker("gPick", whoDraft);
   bindGroupSelect(); bindPasteJoin();
-  if (focusJoin) setTimeout(() => $("pjUrl") && $("pjUrl").focus(), 200);
+  if (mode === "join") setTimeout(() => $("pjUrl") && $("pjUrl").focus(), 200);
+  if (mode === "new") setTimeout(() => $("gName") && $("gName").focus({ preventScroll: true }), 200);
   $("gCreate").onclick = async () => {
     const name = $("gName").value.trim(), who = readWho("g");
     if (!name || !who) return setMsg("gMsg", "グループの名前とニックネームを入れてください。", false);
@@ -475,7 +483,7 @@ function joinScreen(gid, key) {
     <div class="panel tip-panel">
       <h2>📱 ホーム画面のアイコンで使っている人へ</h2>
       <p>いまは Safari で開いています。iPhone では Safari とホーム画面のアイコンで「自分」が別々なので、ここで参加すると<b>アイコンの方では参加していないことになります</b>。</p>
-      <p>アイコンで使いたい人は、ここでは参加せずに、下のボタンでリンクをコピーしてください。そのあとホーム画面のアイコンから DAILY FIND を開き、「グループ」→「🔗 招待リンクをもらった人」の欄に貼り付けて参加します。</p>
+      <p>アイコンで使いたい人は、ここでは参加せずに、下のボタンでリンクをコピーしてください。そのあとホーム画面のアイコンから DAILY FIND を開き、「グループ」→「🔗 招待で参加」の欄に貼り付けて参加します。</p>
       <div class="actions"><button class="btn small" id="jCopy">招待リンクをコピー</button><span class="msg" id="jCopyMsg"></span></div>
       <p class="note">まだホーム画面に追加していない人は、先に追加してから、アイコンの方で参加するのがおすすめです。</p>
     </div>` : ""}`;
@@ -501,9 +509,10 @@ function groupScreen() {
   const isOwner = current.owner === me;
   const afterPost = () => { tab = "feed"; root.querySelectorAll(".tabs2 button").forEach(x => x.classList.toggle("on", x.dataset.t === tab)); drawGroupBody(); document.querySelector(".tabs2")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   root.innerHTML = `
+    ${groupSelectHtml()}
     <div class="bar">
       <h2>${esc(current.name)}</h2>
-      <div class="actions">${groupSelectHtml()}<button class="btn small ghost" id="inviteBtn">友達を招待</button><button class="btn small" id="newBtn">＋ 投稿する</button></div>
+      <div class="actions"><button class="btn small ghost" id="inviteBtn">友達を招待</button><button class="btn small" id="newBtn">＋ 投稿する</button></div>
     </div>
     <div class="members" id="members"></div>
     <div class="panel" id="invitePanel" hidden style="margin-bottom:20px">
@@ -535,7 +544,7 @@ function groupScreen() {
   $("inviteBtn").onclick = () => { $("invitePanel").hidden = !$("invitePanel").hidden; };
   $("copyInv").onclick = async () => { try { await navigator.clipboard.writeText($("invUrl").value); toast("招待リンクをコピーしました"); } catch { $("invUrl").select(); setMsg("invMsg", "選択しました。長押しでコピーしてください", true); } };
   // LINE にそのまま貼れる、説明つきの招待メッセージ
-  const inviteMessage = () => `DAILY FIND のグループ「${current.name}」に招待します！\n${$("invUrl").value}\n\n▼ iPhone でホーム画面のアイコンから DAILY FIND を使っている人は\nこのリンクは押さずに長押し→「コピー」して、アイコンから開いた DAILY FIND の「グループ」→「🔗 招待リンクをもらった人」に貼り付けてね`;
+  const inviteMessage = () => `DAILY FIND のグループ「${current.name}」に招待します！\n${$("invUrl").value}\n\n▼ iPhone でホーム画面のアイコンから DAILY FIND を使っている人は\nこのリンクは押さずに長押し→「コピー」して、アイコンから開いた DAILY FIND の「グループ」→「🔗 招待で参加」に貼り付けてね`;
   $("copyInvMsg").onclick = async () => { try { await navigator.clipboard.writeText(inviteMessage()); toast("説明つきでコピーしました。LINE に貼り付けて送ってください"); } catch { prompt("この文をコピーしてください", inviteMessage()); } };
   $("newBtn").onclick = $("fab").onclick = () => openCompose(null, { kind: "group", gid: current.gid, gname: current.name }, afterPost);
   if ($("leave")) $("leave").onclick = e => armed(e.target, "このグループを抜ける", async () => {
