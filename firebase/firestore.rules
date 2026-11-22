@@ -2,6 +2,7 @@ rules_version = '2';
 // DAILY FIND FRIENDS のデータの守り（Firestore セキュリティルール） v4
 //
 // v4：プロフィール（写真アイコン）・フォロー・みんなへの投稿（パブリック投稿）を追加
+// v5：通知（いいね・フォローされたら届く「お知らせ」）を追加
 // ・友達は「匿名ログイン」だけ（メール・パスワード・名前は使わない）
 // ・グループの中身（メンバー・投稿・いいね・ひとこと）は、そのグループのメンバーと管理者だけが読める
 // ・グループは誰でも作れる。参加には招待リンクの合言葉が必要
@@ -188,6 +189,33 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin()
         || (signedIn() && (get(srcDoc()).data.uid == request.auth.uid || (!isPub() && isOwner(gidOf()))));
+    }
+
+    // 通知（インスタの「お知らせ」のようなもの）：notifs/{受け取る人}/items/{通知}
+    // ・読めるのは受け取った本人だけ。本人は「読んだ」にしたり消したりできる
+    // ・作れるのは、本当にいいね／フォローした本人だけ（いいね・フォローが実際にあることを確かめる）
+    // ・いいね／フォローを取り消した本人は、自分が出した通知を消せる
+    match /notifs/{uid}/items/{nid} {
+      function n() { return request.resource.data; }
+      function likedPost() {
+        return n().kind == 'pub'
+          ? (get(pubDoc(n().pid)).data.uid == uid && get(pubDoc(n().pid)).data.likes[request.auth.uid] == true)
+          : (get(postDoc(n().gid, n().pid)).data.uid == uid && get(postDoc(n().gid, n().pid)).data.likes[request.auth.uid] == true);
+      }
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        && request.resource.data.read == true;
+      allow delete: if signedIn() && (request.auth.uid == uid || resource.data.from == request.auth.uid);
+      allow create: if signedIn() && uid != request.auth.uid
+        && n().keys().hasOnly(['type', 'from', 'name', 'icon', 'color', 'title', 'image', 'kind', 'gid', 'pid', 'createdAt', 'read'])
+        && n().from == request.auth.uid && n().read == false && n().createdAt == request.time
+        && str(n().name, 1, 20) && iconOk(n().icon) && colorOk(n().color)
+        && str(n().title, 0, 100) && httpsOrEmpty(n().image) && str(n().gid, 0, 64) && str(n().pid, 0, 64)
+        && ((n().type == 'follow' && nid == 'follow_' + request.auth.uid
+              && exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid)))
+          || (n().type == 'like' && n().kind in ['pub', 'group'] && nid == 'like_' + n().pid + '_' + request.auth.uid
+              && likedPost()));
     }
 
     // 意見ボックス：誰でも送れる（中身を読めるのは管理者だけ）

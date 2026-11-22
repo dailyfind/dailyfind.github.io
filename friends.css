@@ -225,6 +225,48 @@ a.chip, .who a.u, .urow a { text-decoration: none; color: inherit; }
 .hx-more .hx-cta { width: 100%; }
 .hx-more .hx-cta .btn { color: var(--paper); } .hx-more .hx-cta .btn.ghost { color: var(--ink); }
 .mhelp { display: none; }
+/* ===== いいね（インスタ風） ===== */
+.like { gap: 4px; padding: 2px 10px 2px 6px; }
+.like .hrt { width: 20px; height: 20px; fill: none; stroke: var(--ink); stroke-width: 1.8; transition: transform .15s; }
+.like.on { border-color: var(--hair); }
+.like.on .hrt { fill: #ff3040; stroke: #ff3040; }
+.like.pop .hrt { animation: hpop .45s ease; }
+@keyframes hpop { 0% { transform: scale(1); } 30% { transform: scale(1.35); } 60% { transform: scale(.9); } 100% { transform: scale(1); } }
+.likers { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); width: 100%; }
+.likers .hrt { width: 14px; height: 14px; fill: #ff3040; flex: none; }
+.likers b { font-weight: 700; }
+.likers .more-likers { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; }
+/* ジャケットをダブルタップしたときの大きなハート */
+.post > .cover { position: relative; touch-action: manipulation; -webkit-user-select: none; user-select: none; cursor: pointer; }
+.burst { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.burst .hrt { width: 55%; height: 55%; fill: #fff; filter: drop-shadow(0 4px 14px rgba(0,0,0,.35)); animation: burst .9s ease forwards; }
+@keyframes burst { 0% { transform: scale(0); opacity: 0; } 15% { transform: scale(1.15); opacity: 1; } 30% { transform: scale(.95); } 45% { transform: scale(1); } 80% { opacity: 1; } 100% { transform: scale(.6) translateY(-20%); opacity: 0; } }
+
+/* ===== お知らせ（インスタのアクティビティ風） ===== */
+.mainnav button { position: relative; }
+.nbadge { position: absolute; top: 4px; left: calc(50% + 4px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 99px; background: #ff3040; color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; letter-spacing: 0; box-shadow: 0 0 0 2px var(--paper); }
+@media (min-width: 721px) { .nbadge { position: static; display: inline-block; margin-left: 4px; vertical-align: 1px; } }
+.act-sec { font-size: 15px; font-weight: 700; margin: 18px 0 6px; }
+.act-row { display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; padding: 8px 6px; margin: 0 -6px; border-radius: 10px; }
+.act-row.new { background: color-mix(in srgb, #0095f6 7%, transparent); }
+.act-av { position: relative; width: 44px; height: 44px; display: block; text-decoration: none; }
+.act-av .av { width: 44px; height: 44px; font-size: 22px; }
+.act-av.two .av { width: 32px; height: 32px; font-size: 16px; position: absolute; box-shadow: 0 0 0 2px var(--paper); }
+.act-av.two .av:first-child { right: 0; bottom: 0; z-index: 1; }
+.act-av.two .av:last-child { left: 0; top: 0; }
+.act-text { font-size: 14px; line-height: 1.55; min-width: 0; }
+.act-text a { text-decoration: none; color: var(--ink); }
+.act-time { color: var(--muted); margin-left: 6px; font-size: 13px; white-space: nowrap; }
+.act-thumb { width: 44px; height: 44px; border-radius: 4px; overflow: hidden; display: block; background: var(--card); text-decoration: none; }
+.act-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.act-ph { display: grid; place-items: center; width: 100%; height: 100%; font-size: 12px; font-weight: 700; color: var(--muted); }
+.act-btn { padding: 6px 14px !important; }
+.act-empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+.act-empty .hrt { width: 64px; height: 64px; fill: none; stroke: var(--ink); stroke-width: 1.2; padding: 14px; border: 2px solid var(--ink); border-radius: 50%; box-sizing: content-box; }
+.act-empty h3 { color: var(--ink); font-size: 20px; margin: 14px 0 6px; }
+.act-empty p { font-size: 14px; margin: 0 auto; max-width: 320px; line-height: 1.8; }
+
 /* グループの切り替え（横に並ぶボタン） */
 .gswitch { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--hair); }
 .gswitch button { flex: none; font: inherit; font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 99px; border: 1px solid var(--hair); background: var(--paper); color: var(--ink); cursor: pointer; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; touch-action: manipulation; }

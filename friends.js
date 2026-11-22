@@ -127,6 +127,7 @@ async function saveProfile(p, sync) {
   try { localStorage.setItem("dff_me", "1"); } catch {}
   if (sync) await Promise.all(joinedGroups().map(g => updateDoc(doc(db, "groups", g.gid, "members", me), { nickname: data.nickname, icon: data.icon, color: data.color }).catch(() => {})));
   if (current) Object.assign(current, { nickname: data.nickname, icon: data.icon, color: data.color });
+  if (!actUnsub) watchActivity();
 }
 // 画面に出た丸アイコンを、その人の写真に差し替える
 async function hydrate() {
@@ -160,7 +161,7 @@ function upgradeLinks() {
   });
 }
 let hyTimer = null;
-new MutationObserver(() => { clearTimeout(hyTimer); hyTimer = setTimeout(() => { hydrate(); upgradeLinks(); }, 60); }).observe(document.body, { childList: true, subtree: true });
+new MutationObserver(() => { clearTimeout(hyTimer); hyTimer = setTimeout(() => { hydrate(); upgradeLinks(); fillLikers(); }, 60); }).observe(document.body, { childList: true, subtree: true });
 
 // 写真を正方形・小さい JPEG にする（Firestore にそのまま入れるため）
 const readAsDataURL = f => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ng; r.readAsDataURL(f); });
@@ -218,6 +219,34 @@ async function setFollow(to, on) {
   await ensureAuth();
   if (on) await setDoc(doc(db, "follows", followId(to)), { from: me, to, createdAt: serverTimestamp() });
   else await deleteDoc(doc(db, "follows", followId(to)));
+  sendNotif(to, `follow_${me}`, on, { type: "follow", title: "", image: "", kind: "", gid: "", pid: "" });
+}
+
+// ===== 通知（いいね・フォローされたら、相手の「お知らせ」に届く） =====
+// 届け先：notifs/{相手}/items/{like_投稿ID_自分 / follow_自分}。取り消したら自分で消す
+const myCard = () => ({ name: (myProfile && myProfile.nickname) || "ゲスト", icon: (myProfile && myProfile.icon) || "🎧", color: okColor(myProfile && myProfile.color) });
+async function sendNotif(to, nid, on, data) {
+  if (!to || to === me) return;
+  const ref = doc(db, "notifs", to, "items", nid);
+  try {
+    if (!on) { await deleteDoc(ref); return; }
+    if (!myProfileLoaded) await loadMyProfile().catch(() => {});
+    await setDoc(ref, { ...data, from: me, ...myCard(), createdAt: serverTimestamp(), read: false });
+  } catch (e) { console.warn("通知を送れませんでした", e && e.code); }
+}
+const sendLikeNotif = (p, on) => p && sendNotif(p.uid, `like_${p.id}_${me}`, on, {
+  type: "like", title: String(p.title || "").slice(0, 100), image: /^https:\/\/[^\s"<>]+$/.test(p.image || "") && p.image.length <= 500 ? p.image : "",
+  kind: p._src.kind, gid: p._src.gid || "", pid: p.id });
+
+// 未読のお知らせの数を、メニューの「お知らせ」に出す
+let actUnsub = null;
+async function watchActivity() {
+  let hasMe = false; try { hasMe = localStorage.getItem("dff_me") === "1"; } catch {}
+  if (!hasMe && !joinedGroups().length) return;   // まだ何もしていない人は、ログインしない
+  try { await ensureAuth(); } catch { return; }
+  if (actUnsub) actUnsub();
+  actUnsub = onSnapshot(query(collection(db, "notifs", me, "items"), where("read", "==", false), limit(99)),
+    s => window.DF && window.DF.setActBadge && window.DF.setActBadge(s.size), () => {});
 }
 const followBtn = (uid, on) => `<button class="btn small ${on ? "ghost" : ""}" data-fol="${esc(uid)}" data-on="${on ? "1" : ""}">${on ? "フォロー中" : "フォローする"}</button>`;
 const userRow = (uid, p, extra = "") => `<div class="urow"><a href="${esc(userHash(uid))}">${av(p && p.icon, p && p.color, uid)}<span>${esc((p && p.nickname) || "（プロフィールなし）")}</span></a>${extra}</div>`;
@@ -262,6 +291,7 @@ async function show(view) {
   }
   if (view === "all") return allView();
   if (view === "me") return meView();
+  if (view === "activity") return activityView();
   if (view.startsWith("u=")) return userView(decodeURIComponent(view.slice(2)));
   if (view === "admin") return adminView();
   if (view === "feedback") return feedbackView();
@@ -277,15 +307,32 @@ const postRef = (store, p) => (p._src.kind === "pub" ? doc(store, "pubposts", p.
 const songRef = (store, p) => doc(store, "songs", p._src.kind === "pub" ? "pub_" + p.id : songId(p._src.gid, p.id));
 const likedByMe = p => !!(me && p.likes && p.likes[me]);
 let members = {};   // 開いているグループのメンバー（いいねした人の名前用）
-const likersText = p => Object.keys(p.likes || {}).map(u => (members[u] && members[u].nickname) || "抜けた人").join("、");
-const likeBtn = p => { shown.set(keyOf(p), p); return `<button class="like ${likedByMe(p) ? "on" : ""}" data-like="${esc(keyOf(p))}" aria-pressed="${likedByMe(p)}"><span class="h">♥</span>${likeCount(p) || ""}</button>`; };
+// インスタ風のハート（いいね前は線だけ、いいねすると赤く塗られる）
+const HEART = `<svg class="hrt" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.4-4.5-9.4-8.9C1.1 8.4 3 4.6 6.7 4.6c2.2 0 3.9 1.3 5.3 3.1 1.4-1.8 3.1-3.1 5.3-3.1 3.7 0 5.6 3.8 4.1 7-2 4.4-9.4 8.9-9.4 8.9z"/></svg>`;
+const likeBtn = p => { shown.set(keyOf(p), p); return `<button class="like ${likedByMe(p) ? "on" : ""}" data-like="${esc(keyOf(p))}" aria-pressed="${likedByMe(p)}" aria-label="いいね">${HEART}<span class="lc">${likeCount(p) || ""}</span></button>`; };
+// 「みさきさん、他2人が「いいね！」しました」（名前は後から入れる：fillLikers）
+const likersHtml = p => likeCount(p) ? `<div class="likers" data-likers="${esc(Object.keys(p.likes).join(","))}"></div>` : "";
+async function fillLikers() {
+  const els = [...document.querySelectorAll(".likers[data-likers]:not([data-f])")];
+  for (const el of els) {
+    el.dataset.f = "1";
+    const uids = el.dataset.likers.split(",").filter(Boolean); if (!uids.length) continue;
+    // 自分がいいねしていたら自分を先に、そうでなければフォロー中・メンバーを先に
+    uids.sort((a, b) => (b === me) - (a === me) || (!!members[b]) - (!!members[a]));
+    const nameOf = async u => u === me ? "あなた" : ((members[u] && members[u].nickname) || ((await getProfile(u)) || {}).nickname || "だれか");
+    const first = await nameOf(uids[0]);
+    el.innerHTML = `${HEART}<span><b>${esc(first)}</b>${first === "あなた" ? "" : "さん"}${uids.length > 1 ? `、<button type="button" class="more-likers">他${uids.length - 1}人</button>` : ""}が「いいね！」しました</span>`;
+    const mb = el.querySelector(".more-likers");
+    if (mb) mb.onclick = async () => { const names = await Promise.all(uids.map(nameOf)); el.querySelector("span").innerHTML = `<b>${names.map(esc).join("、")}</b> が「いいね！」しました`; };
+  }
+}
 const srcLabel = p => (p._src.kind === "pub" ? `<span class="src">🌐 公開</span>` : `<span class="src">👥 ${esc(p._src.gname || "グループ")}</span>`);
 
 function postHtml(p, { canDelete = false, showSrc = false } = {}) {
   shown.set(keyOf(p), p);
-  const k = esc(keyOf(p)), mine = me && p.uid === me, link = safeLink(p.link), inGroup = p._src.kind === "group";
+  const k = esc(keyOf(p)), mine = me && p.uid === me, link = safeLink(p.link);
   return `
-    <article class="post">
+    <article class="post" data-k="${k}">
       ${cover({ title: p.title, category: p.category, image: p.image })}
       <div>
         <div class="who"><a class="u" href="${esc(userHash(p.uid))}">${av(p.icon, p.color, p.uid)}<b>${esc(p.nickname)}</b></a>${fmtTime(p.createdAt)}${showSrc ? srcLabel(p) : ""}</div>
@@ -299,7 +346,7 @@ function postHtml(p, { canDelete = false, showSrc = false } = {}) {
           ${p.category === "音楽" ? listenHtml(p, false) : link ? `<a class="listen" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(ctaLabel(p))} ↗</a>` : ""}
           ${mine ? `<button class="txt" data-edit="${k}">編集</button>` : ""}
           ${mine || canDelete ? `<button class="txt" data-del="${k}">削除</button>` : ""}
-          ${inGroup && likeCount(p) ? `<div class="likers">♥ ${esc(likersText(p))}</div>` : ""}
+          ${likersHtml(p)}
           ${isPublicSong(p) ? `<div class="pub">🌐 曲名だけ「みんなのプレイリスト」に載っています</div>` : ""}
         </div>
       </div>
@@ -308,6 +355,16 @@ function postHtml(p, { canDelete = false, showSrc = false } = {}) {
 // いいね・編集・削除のボタンを動かす。redraw：いいね後に描き直す（自動で更新されない画面用） reload：削除・編集後に読み直す
 function bindPostOps(el, { redraw, reload } = {}) {
   el.querySelectorAll("[data-like]").forEach(b => b.onclick = async () => { await toggleLike(shown.get(b.dataset.like), b); redraw && redraw(); });
+  // インスタのように、ジャケットをダブルタップでいいね（すでにいいね済みなら、ハートが出るだけ）
+  el.querySelectorAll("article.post[data-k] > .cover").forEach(c => {
+    let last = 0;
+    c.addEventListener("pointerup", async () => {
+      const now = Date.now(); if (now - last > 320) { last = now; return; } last = 0;
+      const art = c.closest("article"), p = shown.get(art.dataset.k), btn = art.querySelector("[data-like]");
+      const burst = document.createElement("div"); burst.className = "burst"; burst.innerHTML = HEART; c.append(burst); setTimeout(() => burst.remove(), 900);
+      if (p && btn && !likedByMe(p)) { await toggleLike(p, btn); redraw && redraw(); }
+    });
+  });
   el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openCompose(shown.get(b.dataset.edit), null, reload));
   el.querySelectorAll("[data-del]").forEach(b => b.onclick = () => armed(b, "削除", async () => { await deletePost(db, shown.get(b.dataset.del)); reload && reload(); }));
 }
@@ -335,6 +392,10 @@ async function toggleLike(p, btn) {
       if (isPublicSong(fresh)) batch.update(songRef(db, p), { likeCount: Object.keys(next).length });
       await batch.commit();
       p.likes = next;
+      // 押した手応え：ハートをその場で赤くして、ぽんっと動かす（すぐに自動で描き直されることもある）
+      btn.classList.toggle("on", on); btn.classList.remove("pop"); void btn.offsetWidth; if (on) btn.classList.add("pop");
+      const lc = btn.querySelector(".lc"); if (lc) lc.textContent = Object.keys(next).length || "";
+      sendLikeNotif(p, on);
       break;
     } catch (e) { if (attempt === 1) console.error(e); }
   }
@@ -848,6 +909,70 @@ async function meView() {
   tabsOn(); drawMe();
 }
 
+// ===== お知らせ（インスタの「アクティビティ」のように、いいね・フォローが届く） =====
+const ago = ts => {
+  if (!ts || !ts.toDate) return "今";
+  const d = ts.toDate(), s = (Date.now() - d) / 1000;
+  if (s < 60) return "今"; if (s < 3600) return `${Math.floor(s / 60)}分前`; if (s < 86400) return `${Math.floor(s / 3600)}時間前`;
+  if (s < 604800) return `${Math.floor(s / 86400)}日前`; return `${d.getMonth() + 1}月${d.getDate()}日`;
+};
+const actSection = ts => {
+  if (!ts || !ts.toDate) return "今日";
+  const d = ts.toDate(), now = new Date(), days = (now - d) / 86400000;
+  if (d.toDateString() === now.toDateString()) return "今日";
+  return days < 7 ? "今週" : days < 30 ? "今月" : "それ以前";
+};
+async function activityView() {
+  current = null;
+  root.innerHTML = `<div class="bar"><h2>お知らせ</h2></div><div id="actList">${LOADING}</div>`;
+  try { await ensureAuth(); } catch { root.innerHTML = `<p class="empty">つながりませんでした。通信状況を確認して、開き直してください。</p>`; return; }
+  let following = new Set(await myFollowing().catch(() => []));
+  let unreadAtOpen = null;   // 開いたときに未読だったもの（その間は色をつけて目立たせる）
+  unsubs.push(onSnapshot(query(collection(db, "notifs", me, "items"), orderBy("createdAt", "desc"), limit(100)), snap => {
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!unreadAtOpen) {
+      unreadAtOpen = new Set(items.filter(x => !x.read).map(x => x.id));
+      const unread = snap.docs.filter(d => !d.data().read);   // 開いたら「読んだ」にする
+      if (unread.length) { const b = writeBatch(db); unread.forEach(d => b.update(d.ref, { read: true })); b.commit().catch(() => {}); }
+    }
+    drawActivity(items, following, unreadAtOpen);
+  }, e => { console.error(e); $("actList").innerHTML = `<p class="empty">読み込めませんでした。</p>`; }));
+}
+function drawActivity(items, following, unreadAtOpen) {
+  const box = $("actList"); if (!box) return;
+  if (!items.length) {
+    box.innerHTML = `<div class="act-empty">${HEART}<h3>あなたへのお知らせ</h3><p>誰かがあなたの投稿に「いいね！」したり、あなたをフォローしたりすると、ここに届きます。</p></div>`;
+    return;
+  }
+  // 同じ日のくくりの中で、同じ投稿へのいいねは1行にまとめる（インスタと同じ）
+  const rows = [], byPost = new Map();
+  for (const n of items) {
+    const sec = actSection(n.createdAt);
+    if (n.type === "like") {
+      const k = sec + "|" + n.kind + "|" + n.gid + "|" + n.pid;
+      if (byPost.has(k)) { byPost.get(k).people.push(n); if (unreadAtOpen.has(n.id)) byPost.get(k).isNew = true; continue; }
+      const row = { sec, type: "like", n, people: [n], isNew: unreadAtOpen.has(n.id) }; byPost.set(k, row); rows.push(row);
+    } else rows.push({ sec, type: n.type, n, people: [n], isNew: unreadAtOpen.has(n.id) });
+  }
+  const who = n => `<a href="${esc(userHash(n.from))}"><b>${esc(n.name)}</b></a>さん`;
+  const faces = people => `<a class="act-av ${people.length > 1 ? "two" : ""}" href="${esc(userHash(people[0].from))}">${people.slice(0, 2).map(x => av(x.icon, x.color, x.from)).join("")}</a>`;
+  let html = "", lastSec = "";
+  for (const r of rows) {
+    if (r.sec !== lastSec) { html += `<h3 class="act-sec">${r.sec}</h3>`; lastSec = r.sec; }
+    const n = r.n, others = r.people.length - 1;
+    const text = r.type === "follow"
+      ? `${who(n)}があなたをフォローしました。`
+      : `${who(n)}${others ? `、他${others}人` : ""}があなたの投稿「${esc(n.title)}」に「いいね！」しました。`;
+    const right = r.type === "follow"
+      ? followBtn(n.from, following.has(n.from)).replace('class="btn small', 'class="btn small act-btn')
+      : `<a class="act-thumb" href="${n.kind === "group" ? "#group" : "#me"}" data-gid="${esc(n.gid || "")}">${n.image ? `<img src="${esc(n.image)}" alt="" loading="lazy">` : `<span class="act-ph">${esc(String(n.title || "").slice(0, 2))}</span>`}</a>`;
+    html += `<div class="act-row ${r.isNew ? "new" : ""}">${faces(r.people)}<div class="act-text">${text}<span class="act-time">${ago(n.createdAt)}</span></div>${right}</div>`;
+  }
+  box.innerHTML = html;
+  box.querySelectorAll(".act-thumb[data-gid]").forEach(a => a.onclick = () => { if (a.dataset.gid) setLast(a.dataset.gid); });
+  bindFollowBtns(box, (uid, on) => { if (uid === undefined) return; if (on) following.add(uid); else following.delete(uid); });
+}
+
 // ===== ほかの人のページ =====
 async function userView(uid) {
   current = null;
@@ -1177,4 +1302,5 @@ async function searchSongs(q) { if (!isIOS) { try { return await apple(q); } cat
 
 // ===== 読み込み時：今の画面に合わせて動く =====
 window.DF_READY = true;
+watchActivity();
 if (window.DF) window.DF.friendsReady();

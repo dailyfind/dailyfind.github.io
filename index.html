@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#111111">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122m">
-<link rel="stylesheet" href="friends.css?v=20261122m">
+<link rel="stylesheet" href="style.css?v=20261122n">
+<link rel="stylesheet" href="friends.css?v=20261122n">
 </head>
 <body>
 <div class="wrap">
@@ -34,6 +34,7 @@
     <button data-go=""><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 4l8.5 6.5V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"/></svg><span>ホーム</span></button>
     <button data-go="all"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span>見つける</span></button>
     <button data-go="group"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c.6-3.8 3.1-6 6.5-6s5.9 2.2 6.5 6"/><circle cx="17" cy="9.5" r="2.6"/><path d="M16.5 14.2c2.7.2 4.4 2 5 5"/></svg><span>グループ</span></button>
+    <button data-go="activity"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.4-4.5-9.4-8.9C1.1 8.4 3 4.6 6.7 4.6c2.2 0 3.9 1.3 5.3 3.1 1.4-1.8 3.1-3.1 5.3-3.1 3.7 0 5.6 3.8 4.1 7-2 4.4-9.4 8.9-9.4 8.9z"/></svg><span>お知らせ</span><span class="nbadge" id="actBadge" hidden></span></button>
     <button data-go="me"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.5 4-7 8-7s7.2 2.5 8 7"/></svg><span>マイページ</span></button>
     <button data-go="admin" id="navAdmin" hidden><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19.5 6v5.5c0 4.6-3.2 7.7-7.5 9-4.3-1.3-7.5-4.4-7.5-9V6z"/></svg><span>管理<span class="badge" id="navBadge" hidden></span></span></button>
     <button type="button" class="navhelp" id="introOpen" aria-label="DAILY FIND の使い方">？使い方</button>
@@ -64,7 +65,7 @@
   <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="introLink" style="text-decoration:none">❓ DAILY FIND とは</a><a href="#feedback" style="text-decoration:none">💬 意見を送る</a><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a><span id="total"></span><a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
 </div>
 
-<script src="common.js?v=20261122m"></script>
+<script src="common.js?v=20261122n"></script>
 <script>
   let picks = [];
   let filter = "ALL";
@@ -262,7 +263,7 @@
   })();
 
   // ===== 画面の切り替え（ホーム / 見つける / グループ / マイページ / 管理） =====
-  const FRIENDS_VIEW = h => /^(g=|u=|group$|all$|me$|admin$|feedback$)/.test(h);
+  const FRIENDS_VIEW = h => /^(g=|u=|group$|all$|me$|activity$|admin$|feedback$)/.test(h);
   const navOf = h => h.startsWith("g=") ? "group" : h.startsWith("u=") ? "all" : (FRIENDS_VIEW(h) ? h : "");
   let adminOn = false;
   function setNav(v) {
@@ -373,9 +374,11 @@
     setNav,
     setAdmin: on => { adminOn = on; setNav(navOf(location.hash.slice(1))); },
     setBadge: n => { const b = document.getElementById("navBadge"); b.hidden = !n; },
+    // お知らせ（いいね・フォロー）の未読の数。インスタのように赤い丸に数字を出す
+    setActBadge: n => { const b = document.getElementById("actBadge"); b.hidden = !n; b.textContent = n > 9 ? "9+" : String(n || ""); },
     friendsReady: () => { if (FRIENDS_VIEW(location.hash.slice(1))) route(); else if (picks.length && document.getElementById("homeExtras")) window.dispatchEvent(new Event("df:home")); },
   };
 </script>
-<script type="module" src="friends.js?v=20261122m"></script>
+<script type="module" src="friends.js?v=20261122n"></script>
 </body>
 </html>
