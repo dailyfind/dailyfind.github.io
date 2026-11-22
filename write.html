@@ -24,6 +24,7 @@
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   label { display: grid; gap: 6px; font-size: 12px; letter-spacing: .1em; color: var(--muted); font-weight: 500; }
   label .req { color: var(--accent); }
+  .lbl { display: grid; gap: 6px; font-size: 12px; letter-spacing: .1em; color: var(--muted); font-weight: 500; }
   input, select, textarea {
     font: inherit; font-size: 16px; color: var(--ink); background: var(--card);
     border: 1px solid var(--hair); border-radius: 6px; padding: 11px 12px; width: 100%; letter-spacing: normal;
@@ -149,12 +150,13 @@
       </div>
       <label><span>タイトル（作品名・お店の名前） <span class="req">*</span></span><input name="title" required placeholder="例：〇〇〇〇" autocomplete="off"></label>
       <label>作者・アーティスト・場所など<input name="by" placeholder="例：〇〇 著 / 東京・下北沢"></label>
-      <label>評価<div class="rate" id="rate"></div></label>
+      <!-- label で囲むと、どの星を押しても1つ目の星が押されたことになるため div にしている -->
+      <div class="lbl" role="group" aria-label="評価">評価<div class="rate" id="rate"></div></div>
       <label>ひとことで言うと？（大きく表示されます）<input name="oneline" maxlength="80" placeholder="例：夕日を見ながら聴きたい曲"></label>
       <label>紹介文（空行で段落が分かれます）<textarea name="body" placeholder="どこが好きか、どんな人におすすめか…"></textarea></label>
       <label>リンク（なくてもOK）<input name="link" type="url" placeholder="https://"></label>
 
-      <label>画像（表紙・写真）
+      <div class="lbl">画像（表紙・写真）
         <div class="drop" id="drop">
           <div id="preview"></div>
           <div>
@@ -163,7 +165,7 @@
           </div>
         </div>
         <input type="file" id="file" accept="image/*" hidden>
-      </label>
+      </div>
 
       <div class="actions">
         <button class="btn" id="save">公開する</button>
