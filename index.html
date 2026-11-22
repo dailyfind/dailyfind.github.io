@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DAILY FIND</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div class="meta"><span id="issue">—</span><span>A DAILY SELECTION OF GOOD THINGS</span><span id="today">—</span></div>
+    <h1><a href="#">DAILY FIND</a></h1>
+    <p class="sub">毎日ひとつ、いいものを見つける。</p>
+    <div class="double-rule"></div>
+  </header>
+
+  <main id="app"></main>
+
+  <footer><span>© <span id="year"></span> DAILY FIND</span><span id="total"></span></footer>
+</div>
+
+<script src="common.js"></script>
+<script>
+  let picks = [];
+  let filter = "ALL";
+
+  const no = p => "No." + String(picks.length - picks.indexOf(p)).padStart(3, "0");
+
+  function feature(p) {
+    return `
+      <article class="feature">
+        ${cover(p)}
+        <div>
+          <div class="kicker">${cat(p.category).en} / ${esc(p.category)}<span class="no">${no(p)} · ${fmtDate(p.date)}</span></div>
+          <h2>${esc(p.title)}</h2>
+          ${p.by ? `<div class="by">${esc(p.by)}</div>` : ""}
+          ${stars(p.rating || 0)}
+          ${p.oneline ? `<p class="pull">${esc(p.oneline)}</p>` : ""}
+          <div class="body">${paras(p.body)}</div>
+          ${p.link ? `<a class="more" href="${esc(p.link)}" target="_blank" rel="noopener">${esc(ctaLabel(p))} ↗</a>` : ""}
+          ${share(p)}
+        </div>
+      </article>`;
+  }
+
+  // シェアボタン（X / LINE / リンクをコピー）
+  function share(p) {
+    const url = location.origin + location.pathname + "#" + encodeURIComponent(p.id);
+    const text = `DAILY FIND：${p.title}${p.oneline ? "｜" + p.oneline : ""}`;
+    const u = encodeURIComponent(url), t = encodeURIComponent(text);
+    return `
+      <div class="share">
+        <span class="lbl">SHARE</span>
+        <a href="https://twitter.com/intent/tweet?text=${t}&url=${u}" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24"><path d="M18.9 2H22l-7.6 8.7L23 22h-6.8l-5.3-6.9L4.8 22H1.7l8.1-9.3L1 2h7l4.8 6.3L18.9 2Zm-1.2 18h1.9L7.4 3.9H5.4L17.7 20Z"/></svg>X</a>
+        <a href="https://social-plugins.line.me/lineit/share?url=${u}" target="_blank" rel="noopener">LINE</a>
+        <button type="button" data-copy="${esc(url)}">リンクをコピー</button>
+      </div>`;
+  }
+
+  function bindShare(root) {
+    root.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "コピーしました ✓"; }
+      catch { prompt("このリンクをコピーしてください", b.dataset.copy); }
+      setTimeout(() => b.textContent = "リンクをコピー", 2000);
+    });
+  }
+
+  // 検索・並び替え
+  let query = "", sortBy = "new";
+  const SORTS = {
+    new:  (a, b) => b.date.localeCompare(a.date),
+    old:  (a, b) => a.date.localeCompare(b.date),
+    star: (a, b) => (b.rating || 0) - (a.rating || 0) || b.date.localeCompare(a.date),
+  };
+  function updateGrid(past) {
+    const q = query.trim().toLowerCase();
+    let list = (q || filter !== "ALL") ? picks : past;   // 検索・絞り込み中は今日の分も含める
+    if (filter !== "ALL") list = list.filter(p => p.category === filter);
+    if (q) list = list.filter(p => [p.title, p.by, p.oneline, p.body, p.category, cat(p.category).en]
+      .join(" ").toLowerCase().includes(q));
+    list = [...list].sort(SORTS[sortBy]);
+    document.getElementById("gridArea").innerHTML = (q && !list.length)
+      ? `<p class="empty">「${esc(query)}」に当てはまるおすすめは見つかりませんでした。</p>` : grid(list);
+  }
+
+  function grid(list) {
+    if (!list.length) return `<p class="empty">まだこのカテゴリのおすすめはありません。</p>`;
+    return `<div class="grid">${list.map(p => `
+      <a class="item" href="#${esc(p.id)}">
+        ${cover(p)}
+        <div class="kicker">${cat(p.category).en}<span class="no">${no(p)}</span></div>
+        <h4>${esc(p.title)}</h4>
+        ${stars(p.rating || 0)}
+        <p>${esc(p.oneline)}</p>
+      </a>`).join("")}</div>`;
+  }
+
+  function render() {
+    const app = document.getElementById("app");
+    if (!picks.length) { app.innerHTML = `<p class="empty" style="padding:40px 0">まだおすすめがありません。「記事を書く」画面から追加してください。</p>`; return; }
+
+    const single = picks.find(p => p.id === decodeURIComponent(location.hash.slice(1)));
+    if (single) {
+      app.innerHTML = `<a class="back" href="#">← BACK TO TOP</a>` + feature(single);
+      bindShare(app);
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    const [latest, ...past] = picks;
+    const cats = ["ALL", ...new Set(picks.map(p => p.category))];
+    app.innerHTML = feature(latest) + (past.length ? `
+      <section>
+        <div class="section-head">
+          <h3>Back Issues<small>これまでのおすすめ</small></h3>
+          <div class="tabs">${cats.map(c => `<button data-c="${esc(c)}" class="${c === filter ? "on" : ""}">${c === "ALL" ? "ALL" : cat(c).en}</button>`).join("")}</div>
+        </div>
+        <div class="tools">
+          <input type="search" id="q" placeholder="キーワードで探す（タイトル・作者・紹介文）" value="${esc(query)}" aria-label="検索">
+          <select id="sort" aria-label="並び替え">
+            <option value="new">新しい順</option>
+            <option value="old">古い順</option>
+            <option value="star">評価が高い順</option>
+          </select>
+        </div>
+        <div id="gridArea"></div>
+      </section>` : "");
+    bindShare(app);
+    if (!past.length) return;
+    app.querySelector("#sort").value = sortBy;
+    app.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+      filter = b.dataset.c;
+      app.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+      updateGrid(past);
+    });
+    app.querySelector("#q").oninput = e => { query = e.target.value; updateGrid(past); };
+    app.querySelector("#sort").onchange = e => { sortBy = e.target.value; updateGrid(past); };
+    updateGrid(past);
+  }
+
+  (async () => {
+    picks = await loadPicks();
+    const now = new Date();
+    const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    document.getElementById("today").textContent = `${fmtDate(iso)} ${weekday(iso)}`;
+    document.getElementById("issue").textContent = `ISSUE ${String(picks.length).padStart(3, "0")}`;
+    document.getElementById("total").textContent = `${picks.length} PICKS`;
+    document.getElementById("year").textContent = now.getFullYear();
+    window.addEventListener("hashchange", render);
+    render();
+  })();
+</script>
+</body>
+</html>
