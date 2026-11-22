@@ -367,11 +367,45 @@ async function groupView(gid, key) {
 
 const groupSelectHtml = () => {
   const gs = loadGroups();
-  return `<select id="gSel" aria-label="グループを選ぶ">${gs.map(g => `<option value="${esc(g.gid)}" ${current && g.gid === current.gid ? "selected" : ""}>${esc(g.name || "（参加前）")}</option>`).join("")}<option value="__new">＋ グループを作る</option></select>`;
+  return `<select id="gSel" aria-label="グループを選ぶ">${gs.map(g => `<option value="${esc(g.gid)}" ${current && g.gid === current.gid ? "selected" : ""}>${esc(g.name || "（参加前）")}</option>`).join("")}<option value="__join">🔗 招待リンクで参加する</option><option value="__new">＋ グループを作る</option></select>`;
 };
 function bindGroupSelect() {
   const s = $("gSel"); if (!s) return;
-  s.onchange = () => { stop(); if (s.value === "__new") return welcome(); const g = loadGroups().find(x => x.gid === s.value); if (g) groupView(g.gid, g.key); };
+  s.onchange = () => { stop(); if (s.value === "__join" || s.value === "__new") return welcome(s.value === "__join"); const g = loadGroups().find(x => x.gid === s.value); if (g) groupView(g.gid, g.key); };
+}
+
+// ===== 招待リンクを貼り付けて参加 =====
+// iPhone では、ホーム画面のアイコンと Safari が別々の「自分」を覚えている。
+// アイコンで使っている人が LINE の招待リンクを押すと Safari が開いてしまうので、リンクをコピーしてここに貼ってもらう。
+const isStandalone = () => window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+function parseInvite(text) {
+  const m = String(text || "").match(/[#&?]g=([A-Za-z0-9_-]{1,64})&k=([A-Za-z0-9]{20,64})/);
+  return m ? { gid: m[1], key: m[2] } : null;
+}
+const pasteJoinHtml = () => `
+  <div class="panel paste-join" id="pasteJoin">
+    <h2>🔗 招待リンクをもらった人</h2>
+    <p>LINE などで届いた<b>招待リンクをコピーして、ここに貼り付け</b>、「参加する」を押してください。</p>
+    <div class="invite"><input id="pjUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://dailyfind.github.io/…"><button type="button" class="btn small ghost" id="pjPaste">📋 貼り付け</button></div>
+    <div class="actions"><button class="btn" id="pjGo">参加する</button><span class="msg" id="pjMsg"></span></div>
+    <details class="howto"><summary>リンクのコピーのしかた（iPhone）</summary>
+      <ol><li>LINE のトークで、招待リンクを<b>長押し</b>する</li>
+        <li>出てきたメニューの「<b>コピー</b>」を押す</li>
+        <li>DAILY FIND に戻って「<b>📋 貼り付け</b>」を押す（または上の欄を長押しして「ペースト」）</li></ol></details>
+    <p class="note">${isStandalone()
+      ? "💡 いまはホーム画面のアイコンから開いています。LINE の招待リンクをそのまま押すと Safari が開いてしまい、<b>このアイコンの方では参加できません</b>。リンクは押さずにコピーして、ここに貼り付けてください。"
+      : "💡 ホーム画面のアイコンから DAILY FIND を使っている人は、招待リンクを押さずにコピーして、アイコンから開いたこの画面に貼り付けてください（Safari とアイコンでは、参加しているグループが別々になるため）。"}</p>
+  </div>`;
+function bindPasteJoin() {
+  $("pjPaste").onclick = async () => {
+    try { const t = await navigator.clipboard.readText(); $("pjUrl").value = t.trim(); setMsg("pjMsg", parseInvite(t) ? "貼り付けました。「参加する」を押してください。" : "招待リンクではないようです。", !!parseInvite(t)); }
+    catch { $("pjUrl").focus(); setMsg("pjMsg", "上の欄を長押しして「ペースト」を選んでください。", false); }
+  };
+  $("pjGo").onclick = () => {
+    const inv = parseInvite($("pjUrl").value);
+    if (!inv) return setMsg("pjMsg", "招待リンクが読み取れませんでした。LINE で届いたリンクをそのままコピーして貼り付けてください。", false);
+    rememberGroup(inv.gid, inv.key); stop(); groupView(inv.gid, inv.key);
+  };
 }
 
 // 参加・作成のときの「あなた」欄。プロフィールがあればそれを使う
@@ -387,14 +421,15 @@ function readWho(prefix) {
   return nickname ? { nickname, icon: whoDraft.icon, color: whoDraft.color } : null;
 }
 
-function welcome() {
+function welcome(focusJoin) {
   current = null;
   whoDraft = { icon: pickOne(EMOJIS), color: pickOne(COLORS) };
   const has = loadGroups().length;
   root.innerHTML = `
     ${has ? `<div class="bar"><h2>グループ</h2>${groupSelectHtml()}</div>` : ""}
+    ${pasteJoinHtml()}
     <div class="panel">
-      <h2>友達だけのグループを作ろう</h2>
+      <h2>➕ 自分でグループを作る</h2>
       <p>仲のいい友達だけのグループを作れます。作ったあとに出る招待リンクを LINE などで送ると、友達はそのリンクを開くだけで参加できます。メールアドレスもパスワードも要りません。</p>
       <label>グループの名前<input id="gName" maxlength="30" placeholder="例：いつもの4人"></label>
       ${whoHtml("g")}
@@ -402,7 +437,8 @@ function welcome() {
       <p class="note">グループの投稿は、メンバーとサイトの管理者にしか見えません。</p>
     </div>`;
   if (!myProfile) bindPicker("gPick", whoDraft);
-  bindGroupSelect();
+  bindGroupSelect(); bindPasteJoin();
+  if (focusJoin) setTimeout(() => $("pjUrl") && $("pjUrl").focus(), 200);
   $("gCreate").onclick = async () => {
     const name = $("gName").value.trim(), who = readWho("g");
     if (!name || !who) return setMsg("gMsg", "グループの名前とニックネームを入れてください。", false);
@@ -434,7 +470,19 @@ function joinScreen(gid, key) {
       ${whoHtml("j")}
       <div class="actions"><button class="btn" id="jGo">参加する</button><span class="msg" id="jMsg"></span></div>
       <p class="note">グループの投稿は、メンバーとサイトの管理者だけが見られます。</p>
-    </div>`;
+    </div>
+    ${isIOS && !isStandalone() ? `
+    <div class="panel tip-panel">
+      <h2>📱 ホーム画面のアイコンで使っている人へ</h2>
+      <p>いまは Safari で開いています。iPhone では Safari とホーム画面のアイコンで「自分」が別々なので、ここで参加すると<b>アイコンの方では参加していないことになります</b>。</p>
+      <p>アイコンで使いたい人は、ここでは参加せずに、下のボタンでリンクをコピーしてください。そのあとホーム画面のアイコンから DAILY FIND を開き、「グループ」→「🔗 招待リンクをもらった人」の欄に貼り付けて参加します。</p>
+      <div class="actions"><button class="btn small" id="jCopy">招待リンクをコピー</button><span class="msg" id="jCopyMsg"></span></div>
+      <p class="note">まだホーム画面に追加していない人は、先に追加してから、アイコンの方で参加するのがおすすめです。</p>
+    </div>` : ""}`;
+  if ($("jCopy")) $("jCopy").onclick = async () => {
+    try { await navigator.clipboard.writeText(inviteUrl(gid, key)); setMsg("jCopyMsg", "コピーしました。ホーム画面のアイコンから開いて貼り付けてください。", true); }
+    catch { prompt("このリンクをコピーしてください", inviteUrl(gid, key)); }
+  };
   if (!myProfile) bindPicker("jPick", whoDraft);
   $("jGo").onclick = async () => {
     const who = readWho("j");
@@ -462,7 +510,8 @@ function groupScreen() {
       <h2>招待リンク</h2>
       <p>このリンクを LINE などで友達に送ってください。開くだけで参加できます。リンクを知っている人は誰でも参加できるので、送る相手に気をつけてください。</p>
       <div class="invite"><input id="invUrl" readonly value="${esc(inviteUrl(current.gid, current.key))}"><button class="btn small" id="copyInv">コピー</button></div>
-      <div class="actions"><a class="btn small ghost" href="https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(inviteUrl(current.gid, current.key))}" target="_blank" rel="noopener">LINE で送る</a><span class="msg" id="invMsg"></span></div>
+      <div class="actions"><button class="btn small" id="copyInvMsg">説明つきでコピー</button><a class="btn small ghost" href="https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(inviteUrl(current.gid, current.key))}" target="_blank" rel="noopener">LINE で送る</a><span class="msg" id="invMsg"></span></div>
+      <p class="note">📱 iPhone でホーム画面のアイコンから使っている友達は、リンクを押すと Safari が開いてしまい、アイコンの方では参加できません。「説明つきでコピー」で送ると、その場合のやり方（リンクをコピーして「グループ」の欄に貼る）も一緒に伝わります。</p>
     </div>
     <section class="compose" id="compose" hidden></section>
     <div class="tabs2"><button data-t="feed">タイムライン</button><button data-t="pl">グループのプレイリスト</button></div>
@@ -485,6 +534,9 @@ function groupScreen() {
   root.querySelectorAll(".tabs2 button").forEach(b => { b.classList.toggle("on", b.dataset.t === tab); b.onclick = () => { tab = b.dataset.t; root.querySelectorAll(".tabs2 button").forEach(x => x.classList.toggle("on", x === b)); drawGroupBody(); }; });
   $("inviteBtn").onclick = () => { $("invitePanel").hidden = !$("invitePanel").hidden; };
   $("copyInv").onclick = async () => { try { await navigator.clipboard.writeText($("invUrl").value); toast("招待リンクをコピーしました"); } catch { $("invUrl").select(); setMsg("invMsg", "選択しました。長押しでコピーしてください", true); } };
+  // LINE にそのまま貼れる、説明つきの招待メッセージ
+  const inviteMessage = () => `DAILY FIND のグループ「${current.name}」に招待します！\n${$("invUrl").value}\n\n▼ iPhone でホーム画面のアイコンから DAILY FIND を使っている人は\nこのリンクは押さずに長押し→「コピー」して、アイコンから開いた DAILY FIND の「グループ」→「🔗 招待リンクをもらった人」に貼り付けてね`;
+  $("copyInvMsg").onclick = async () => { try { await navigator.clipboard.writeText(inviteMessage()); toast("説明つきでコピーしました。LINE に貼り付けて送ってください"); } catch { prompt("この文をコピーしてください", inviteMessage()); } };
   $("newBtn").onclick = $("fab").onclick = () => openCompose(null, { kind: "group", gid: current.gid, gname: current.name }, afterPost);
   if ($("leave")) $("leave").onclick = e => armed(e.target, "このグループを抜ける", async () => {
     try { await deleteDoc(doc(db, "groups", current.gid, "members", me)); } catch {}

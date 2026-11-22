@@ -225,6 +225,12 @@ a.chip, .who a.u, .urow a { text-decoration: none; color: inherit; }
 .hx-more .hx-cta { width: 100%; }
 .hx-more .hx-cta .btn { color: var(--paper); } .hx-more .hx-cta .btn.ghost { color: var(--ink); }
 .mhelp { display: none; }
+/* 招待リンクを貼り付けて参加 */
+.paste-join, .tip-panel { margin-bottom: 20px; }
+.paste-join { border: 2px solid var(--ink); }
+.howto { font-size: 13px; color: var(--muted); }
+.howto summary { cursor: pointer; font-weight: 700; color: var(--ink); }
+.howto ol { margin: 8px 0 0; padding-left: 1.4em; line-height: 1.9; }
 
 /* スマホ：メニューを画面の下に（アプリのようなタブ） */
 .mainnav .ni { display: none; }
