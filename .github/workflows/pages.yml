@@ -4,6 +4,8 @@ name: Build and publish site
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 * * * *"   # 1時間ごと：新しく投稿された曲の Apple Music のリンクを調べて反映する
   workflow_dispatch:
 
 permissions:
