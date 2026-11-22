@@ -32,7 +32,7 @@
   input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
   textarea { min-height: 160px; resize: vertical; line-height: 1.8; }
   .rate { display: flex; gap: 4px; }
-  .rate button { background: none; border: 0; font-size: 32px; line-height: 1; cursor: pointer; color: var(--hair); padding: 0 2px; }
+  .rate button { background: none; border: 0; font-size: 34px; line-height: 1; cursor: pointer; color: var(--hair); padding: 4px 4px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .rate button.on { color: var(--star); }
 
   .drop { border: 1.5px dashed var(--hair); border-radius: 8px; background: var(--card); display: grid; grid-template-columns: 120px 1fr; gap: 16px; align-items: center; padding: 14px; cursor: pointer; }
@@ -79,6 +79,7 @@
   .music-search { background: var(--card); border-radius: 10px; padding: 14px; }
   .music-search input { background: var(--paper); }
   .music-search .suggest { position: static; margin-top: 2px; box-shadow: none; max-height: none; }   /* キーボードに隠れないよう、下に押し出して表示 */
+  .ver { font-size: 11px; color: var(--muted); }
   .tokenrow { display: flex; gap: 8px; }
   .tokenrow input { flex: 1; min-width: 0; }
   .standalone-note { background: #fff4d6; color: #6b4e00; border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.7; }
@@ -102,6 +103,7 @@
     <div class="top-r">
       <button type="button" class="linkbtn" id="openSetup">設定</button>
       <a href="./" target="_blank">サイトを見る ↗</a>
+      <span class="ver" id="ver"></span>
     </div>
   </div>
 
@@ -185,6 +187,20 @@
 <script>
   const $ = id => document.getElementById(id);
   const form = $("form"), F = form.elements;
+
+  // ===== 新しい版が出ていたら自動で読み直す =====
+  // （スマホは古い画面を最大10分ほど覚えているため）
+  const APP_VERSION = "6";
+  (async () => {
+    try {
+      const html = await (await fetch("write.html?check=" + Date.now(), { cache: "no-store" })).text();
+      const latest = (html.match(/APP_VERSION = "(\d+)"/) || [])[1];
+      if (latest && latest !== APP_VERSION && !location.search.includes("v=" + latest)) {
+        location.replace(location.pathname + "?v=" + latest);
+      }
+    } catch {}
+  })();
+  $("ver").textContent = "v" + APP_VERSION;
 
   // ===== この端末に保存する設定 =====
   const store = {
@@ -286,9 +302,19 @@
   const todayISO = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`; };
   const isMusic = () => F.category.value === "音楽";
 
+  // 星は最初に1回だけ作り、押されたら色だけ変える
+  $("rate").innerHTML = [1, 2, 3, 4, 5].map(n => `<button type="button" data-n="${n}" aria-label="星${n}">★</button>`).join("");
+  $("rate").addEventListener("click", e => {
+    const b = e.target.closest("button[data-n]");
+    if (!b) return;
+    e.preventDefault();
+    rating = +b.dataset.n; drawRate();
+  });
   function drawRate() {
-    $("rate").innerHTML = [1, 2, 3, 4, 5].map(n => `<button type="button" data-n="${n}" class="${n <= rating ? "on" : ""}" aria-label="星${n}">★</button>`).join("");
-    $("rate").querySelectorAll("button").forEach(b => b.onclick = () => { rating = +b.dataset.n; drawRate(); });
+    $("rate").querySelectorAll("button").forEach(b => {
+      const on = +b.dataset.n <= rating;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", on);
+    });
   }
   function drawPreview() {
     const p = { title: F.title.value || "タイトル", category: F.category.value, image: imageData || imageUrl || (removeImage ? "" : currentImage) };
