@@ -100,6 +100,8 @@ def head(title, desc, url, image, kind):
 <meta name="description" content="{e(desc)}">
 <link rel="canonical" href="{e(url)}">
 <link rel="alternate" type="application/rss+xml" title="{NAME}" href="{SITE}/feed.xml">
+<link rel="apple-touch-icon" href="{SITE}/icons/site-180.png">
+<link rel="icon" type="image/png" href="{SITE}/icons/site-180.png">
 <meta property="og:site_name" content="{NAME}">
 <meta property="og:type" content="{kind}">
 <meta property="og:title" content="{e(title)}">

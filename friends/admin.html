@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>管理画面｜DAILY FIND FRIENDS</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://*.googleapis.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src https://dailyfind-friends.firebaseapp.com https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="apple-touch-icon" href="../icons/friends-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css">
+<style>
+  [hidden] { display: none !important; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 18px 0 10px; border-bottom: 3px solid var(--rule); flex-wrap: wrap; }
+  .top h1 { font-family: var(--display); font-weight: 800; letter-spacing: -.03em; font-size: 24px; margin: 0; }
+  .top h1 span { color: var(--accent); }
+  .btn { font: inherit; font-size: 14px; font-weight: 700; padding: 10px 22px; border-radius: 99px; cursor: pointer; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--hair); }
+  .btn.small { padding: 5px 12px; font-size: 12px; font-weight: 500; }
+  .btn.armed { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { padding: 24px 0 60px; display: grid; gap: 32px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--card); border-radius: 12px; padding: 16px; }
+  .stat b { display: block; font-family: var(--display); font-weight: 800; font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); letter-spacing: .1em; }
+  h2 { font-family: var(--display); font-weight: 800; letter-spacing: -.02em; font-size: 22px; margin: 0 0 6px; }
+  .note { font-size: 13px; color: var(--muted); line-height: 1.8; margin: 0 0 10px; }
+  .row { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--hair); }
+  .row.g { grid-template-columns: 1fr auto; }
+  .row .cover { aspect-ratio: 1; border-radius: 3px; }
+  .row .cover-en { font-size: 9px; } .row .cover-ja { display: none; }
+  .row b { display: block; font-size: 15px; } .row small { color: var(--muted); font-size: 12px; }
+  .panel { background: var(--card); border-radius: 12px; padding: 20px; display: grid; gap: 12px; max-width: 560px; }
+  .panel p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+  code { background: var(--paper); padding: 2px 8px; border-radius: 6px; font-size: 13px; word-break: break-all; }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>DAILY FIND <span>FRIENDS</span> 管理画面</h1>
+    <div><span id="who" class="note"></span> <button class="btn small ghost" id="out" hidden>ログアウト</button></div>
+  </header>
+  <main id="main"><p class="empty">読み込んでいます…</p></main>
+</div>
+
+<script src="../common.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, collection, query, orderBy, onSnapshot, writeBatch, getDocs, where, documentId } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  if (window.top !== window.self) { document.documentElement.innerHTML = ""; throw new Error("framed"); }
+
+  // 友達ページ（匿名ログイン）とログイン状態が混ざらないよう、別の名前で起動する
+  const app = initializeApp({
+    apiKey: "AIzaSyB-FxC1jCePfY8FNsXPHv72lKuQ-0OdO5E",
+    authDomain: "dailyfind-friends.firebaseapp.com",
+    projectId: "dailyfind-friends",
+    appId: "1:765801083878:web:db4eec9e1531309f4adc27",
+  }, "admin");
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const $ = id => document.getElementById(id);
+  const main = $("main");
+  let unsubs = [];
+
+  $("out").onclick = () => signOut(auth);
+
+  onAuthStateChanged(auth, async user => {
+    unsubs.forEach(u => u()); unsubs = [];
+    $("out").hidden = !user; $("who").textContent = "";
+    if (!user) {
+      main.innerHTML = `
+        <div class="panel">
+          <p>管理画面は、DAILY FIND の持ち主だけが使えます。Google アカウントでログインしてください。</p>
+          <div><button class="btn" id="in">Google でログイン</button></div>
+          <p id="err"></p>
+        </div>`;
+      $("in").onclick = async () => {
+        try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+        catch (e) { $("err").textContent = "ログインできませんでした（" + (e.code || "error") + "）"; }
+      };
+      return;
+    }
+    let admin = false;
+    try { admin = (await getDoc(doc(db, "admins", user.uid))).exists(); } catch {}
+    if (!admin) {
+      main.innerHTML = `
+        <div class="panel">
+          <p>このアカウントは、まだ管理者として登録されていません。</p>
+          <p>あなたの管理者番号：<br><code>${esc(user.uid)}</code></p>
+          <p>この番号を Firebase の「admins」に登録すると使えるようになります。</p>
+        </div>`;
+      return;
+    }
+    $("who").textContent = "管理者としてログイン中";
+    dashboard();
+  });
+
+  function dashboard() {
+    main.innerHTML = `
+      <section class="stats">
+        <div class="stat"><b id="sGroups">–</b><span>グループ</span></div>
+        <div class="stat"><b id="sSongs">–</b><span>みんなのプレイリストの曲</span></div>
+        <div class="stat"><b id="sLikes">–</b><span>いいねの合計（公開曲）</span></div>
+      </section>
+      <section>
+        <h2>グループ</h2>
+        <p class="note">見られるのはグループ名と作成日だけです。メンバーや投稿の中身は、管理者にも見えません。「閉じる」と、新しく参加できなくなり、そのグループの曲がみんなのプレイリストから消えます。</p>
+        <div id="groups"><p class="empty">読み込んでいます…</p></div>
+      </section>
+      <section>
+        <h2>みんなのプレイリスト</h2>
+        <p class="note">誰でも見られる曲の一覧です。ふさわしくない曲があれば消せます。</p>
+        <div id="songs"><p class="empty">読み込んでいます…</p></div>
+      </section>`;
+
+    const fmt = ts => ts && ts.toDate ? ts.toDate().toLocaleString("ja-JP", { dateStyle: "short", timeStyle: "short" }) : "";
+    const confirmTwice = (btn, label, fn) => {
+      if (!btn.classList.contains("armed")) { btn.classList.add("armed"); btn.textContent = "本当に？"; setTimeout(() => { btn.classList.remove("armed"); btn.textContent = label; }, 4000); return; }
+      btn.disabled = true; fn().catch(e => { console.error(e); btn.textContent = "失敗しました"; });
+    };
+
+    unsubs.push(onSnapshot(query(collection(db, "groups"), orderBy("createdAt", "desc")), snap => {
+      $("sGroups").textContent = snap.size;
+      $("groups").innerHTML = snap.size ? snap.docs.map(d => `
+        <div class="row g"><div><b>${esc(d.data().name)}</b><small>${esc(fmt(d.data().createdAt))}</small></div>
+        <button class="btn small ghost" data-close="${esc(d.id)}">閉じる</button></div>`).join("") : `<p class="empty">まだグループはありません。</p>`;
+      $("groups").querySelectorAll("[data-close]").forEach(b => b.onclick = () => confirmTwice(b, "閉じる", async () => {
+        const gid = b.dataset.close;
+        const songs = await getDocs(query(collection(db, "songs"), where(documentId(), ">=", gid + "_"), where(documentId(), "<", gid + "_")));
+        const batch = writeBatch(db);
+        songs.forEach(s => batch.delete(s.ref));
+        batch.delete(doc(db, "groups", gid, "private", "invite"));
+        batch.delete(doc(db, "groups", gid));
+        await batch.commit();
+      }));
+    }, e => { console.error(e); $("groups").innerHTML = `<p class="empty">読み込めませんでした。</p>`; }));
+
+    unsubs.push(onSnapshot(query(collection(db, "songs"), orderBy("createdAt", "desc")), snap => {
+      $("sSongs").textContent = snap.size;
+      let likes = 0; snap.forEach(d => { likes += d.data().likeCount | 0; });
+      $("sLikes").textContent = likes;
+      $("songs").innerHTML = snap.size ? snap.docs.map(d => { const s = d.data(); return `
+        <div class="row">${cover({ title: s.title, category: "音楽", image: s.image })}
+          <div><b>${esc(s.title)}</b><small>${esc(s.by || "")} · ♥ ${s.likeCount | 0} · ${esc(fmt(s.createdAt))}</small></div>
+          <button class="btn small ghost" data-del="${esc(d.id)}">消す</button></div>`; }).join("") : `<p class="empty">まだ曲はありません。</p>`;
+      $("songs").querySelectorAll("[data-del]").forEach(b => b.onclick = () => confirmTwice(b, "消す", async () => {
+        const batch = writeBatch(db); batch.delete(doc(db, "songs", b.dataset.del)); await batch.commit();
+      }));
+    }, e => { console.error(e); $("songs").innerHTML = `<p class="empty">読み込めませんでした。</p>`; }));
+  }
+</script>
+</body>
+</html>
