@@ -267,6 +267,12 @@ a.chip, .who a.u, .urow a { text-decoration: none; color: inherit; }
 .act-empty h3 { color: var(--ink); font-size: 20px; margin: 14px 0 6px; }
 .act-empty p { font-size: 14px; margin: 0 auto; max-width: 320px; line-height: 1.8; }
 
+/* Google ログイン */
+.gbtn { display: inline-flex; align-items: center; gap: 10px; background: #fff; color: #1f1f1f; border: 1px solid #dadce0; }
+.gbtn:hover { background: #f8f9fa; }
+.glogo { width: 18px; height: 18px; flex: none; }
+.acct h2 { font-size: 17px; }
+
 /* グループの切り替え（横に並ぶボタン） */
 .gswitch { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--hair); }
 .gswitch button { flex: none; font: inherit; font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 99px; border: 1px solid var(--hair); background: var(--paper); color: var(--ink); cursor: pointer; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; touch-action: manipulation; }

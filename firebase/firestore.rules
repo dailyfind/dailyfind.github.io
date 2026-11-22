@@ -3,6 +3,7 @@ rules_version = '2';
 //
 // v4：プロフィール（写真アイコン）・フォロー・みんなへの投稿（パブリック投稿）を追加
 // v5：通知（いいね・フォローされたら届く「お知らせ」）を追加
+// v6：Google ログインでの引き継ぎ用に、入っているグループの一覧（mygroups）を追加
 // ・友達は「匿名ログイン」だけ（メール・パスワード・名前は使わない）
 // ・グループの中身（メンバー・投稿・いいね・ひとこと）は、そのグループのメンバーと管理者だけが読める
 // ・グループは誰でも作れる。参加には招待リンクの合言葉が必要
@@ -216,6 +217,15 @@ service cloud.firestore {
               && exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid)))
           || (n().type == 'like' && n().kind in ['pub', 'group'] && nid == 'like_' + n().pid + '_' + request.auth.uid
               && likedPost()));
+    }
+
+    // 入っているグループの一覧（Google でログインし直したときに元に戻すため）：本人だけが読み書きできる
+    match /mygroups/{uid} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['groups', 'updatedAt'])
+        && request.resource.data.groups is list && request.resource.data.groups.size() <= 50
+        && request.resource.data.updatedAt == request.time;
     }
 
     // 意見ボックス：誰でも送れる（中身を読めるのは管理者だけ）

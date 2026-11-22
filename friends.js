@@ -4,7 +4,8 @@
 // ・管理者（サイトの持ち主）は Google ログイン。別の Firebase アプリ名で起動して、友達用のログインと混ざらないようにする
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver,
-         signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+         signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut,
+         linkWithPopup, signInWithCredential } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, orderBy, limit, where, documentId,
          onSnapshot, serverTimestamp, writeBatch, deleteField, getCountFromServer } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -17,9 +18,9 @@ const CONFIG = {
   appId: "1:765801083878:web:db4eec9e1531309f4adc27",
 };
 
-// 友達用（匿名）
+// 友達用（ふだんは匿名。マイページで Google とつなぐと、別の場所でも Google ログインで同じ人に戻れる）
 const app = initializeApp(CONFIG);
-const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence], popupRedirectResolver: browserPopupRedirectResolver });
 const db = getFirestore(app);
 // 管理者用（Google）
 const adminApp = initializeApp(CONFIG, "admin");
@@ -84,7 +85,28 @@ const inviteUrl = (gid, key) => `${location.origin}/?openExternalBrowser=1#g=${e
 // ===== この端末に覚えておくグループ =====
 const LS_KEY = "dff_groups";
 const loadGroups = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch { return []; } };
-const saveGroups = gs => { try { localStorage.setItem(LS_KEY, JSON.stringify(gs)); } catch {} };
+const saveGroups = gs => { try { localStorage.setItem(LS_KEY, JSON.stringify(gs)); } catch {} syncGroupsSoon(); };
+// 入っているグループの一覧を、本人だけが読める場所（mygroups/{自分}）にも置いておく。
+// Google でログインし直したとき（ホーム画面のアイコン・別のスマホ）に、ここからグループを元に戻す
+let syncTimer = null;
+function syncGroupsSoon() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    if (!me) return;
+    const groups = loadGroups().filter(g => g.name).slice(0, 50).map(g => ({ gid: g.gid, key: g.key, name: g.name }));
+    try { await setDoc(doc(db, "mygroups", me), { groups, updatedAt: serverTimestamp() }); } catch (e) { console.warn("グループ一覧を保存できませんでした", e && e.code); }
+  }, 800);
+}
+async function restoreGroups() {
+  try {
+    const d = await getDoc(doc(db, "mygroups", me)); if (!d.exists()) return 0;
+    const cloud = (d.data().groups || []).filter(g => g && g.gid && g.key);
+    const local = loadGroups(); const have = new Set(local.map(g => g.gid));
+    const merged = [...local, ...cloud.filter(g => !have.has(g.gid))];
+    try { localStorage.setItem(LS_KEY, JSON.stringify(merged)); } catch {}
+    return cloud.length;
+  } catch { return 0; }
+}
 const rememberGroup = (gid, key, name) => { const gs = loadGroups().filter(g => g.gid !== gid); gs.unshift({ gid, key, name: name || "" }); saveGroups(gs); };
 const forgetGroup = gid => saveGroups(loadGroups().filter(g => g.gid !== gid));
 const joinedGroups = () => loadGroups().filter(g => g.name);
@@ -102,6 +124,52 @@ function ensureAuth() {
     });
   });
   return authReady;
+}
+
+// ===== Google ログイン（引き継ぎ用） =====
+// ふだんは匿名のまま。マイページで「Google とつなぐ」と、今の自分（マイページ・グループ・フォロー）が Google アカウントに結びつく。
+// ホーム画面のアイコン・別のスマホでは「Google でログイン」を押すと、その自分に戻れる。
+const G_LOGO = `<svg class="glogo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.9 6.1C12.4 13.7 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.2-13.5-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>`;
+const gProvider = () => { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: "select_account" }); return p; };
+const googleEmail = () => { const u = auth.currentUser, g = u && u.providerData.find(x => x.providerId === "google.com"); return g ? (g.email || "Google アカウント") : ""; };
+const authErr = e => ({ "auth/popup-blocked": "ログインの画面が開けませんでした。もう一度押してください。",
+  "auth/popup-closed-by-user": "ログインをやめました。", "auth/cancelled-popup-request": "ログインをやめました。",
+  "auth/network-request-failed": "通信できませんでした。電波のいいところでもう一度試してください。" }[e && e.code]
+  || `うまくいきませんでした（${(e && e.code) || "error"}）。少し待ってからもう一度試してください。`);
+async function linkGoogle(msgId) {
+  await ensureAuth();
+  setMsg(msgId, "Google のログイン画面を開いています…", true);
+  try {
+    await linkWithPopup(auth.currentUser, gProvider());
+    clearTimeout(syncTimer); syncGroupsSoon();
+    toast("Google とつなぎました"); return true;
+  } catch (e) {
+    if (e.code === "auth/credential-already-in-use" || e.code === "auth/email-already-in-use") {
+      // その Google アカウントは、もう別のマイページとつながっている → そちらに切り替えるか聞く
+      const cred = GoogleAuthProvider.credentialFromError(e);
+      if (cred && confirm("この Google アカウントは、前に別の場所で作ったマイページとつながっています。\nそちらに切り替えますか？\n\n（いまこの画面で使っているマイページからは離れます）")) {
+        try { await switchAccount(() => signInWithCredential(auth, cred)); return true; } catch (e2) { setMsg(msgId, authErr(e2), false); return false; }
+      }
+      setMsg(msgId, "切り替えませんでした。", false); return false;
+    }
+    setMsg(msgId, authErr(e), false); return false;
+  }
+}
+async function loginGoogle(msgId) {
+  await ensureAuth().catch(() => {});
+  if (myProfile && auth.currentUser && auth.currentUser.isAnonymous &&
+      !confirm(`いまこの画面には「${myProfile.nickname}」のマイページがあります。Google でログインすると、そちらに切り替わり、このマイページには戻れなくなります。続けますか？`)) return;
+  setMsg(msgId, "Google のログイン画面を開いています…", true);
+  try { await switchAccount(() => signInWithPopup(auth, gProvider())); } catch (e) { setMsg(msgId, authErr(e), false); }
+}
+// 別の自分に切り替えたら、その自分のグループ一覧を取ってきて、画面を読み直す
+async function switchAccount(signIn) {
+  const res = await signIn();
+  me = res.user.uid; authReady = Promise.resolve(me);
+  try { localStorage.setItem(LS_KEY, "[]"); localStorage.removeItem("dff_last"); localStorage.setItem("dff_me", "1"); } catch {}
+  await restoreGroups();
+  toast("ログインしました");
+  history.replaceState(null, "", "/#me"); location.reload();
 }
 
 // ===== プロフィール（サイト全体で1つ。写真アイコンもここ） =====
@@ -244,6 +312,7 @@ async function watchActivity() {
   let hasMe = false; try { hasMe = localStorage.getItem("dff_me") === "1"; } catch {}
   if (!hasMe && !joinedGroups().length) return;   // まだ何もしていない人は、ログインしない
   try { await ensureAuth(); } catch { return; }
+  syncGroupsSoon();   // 前から使っている人のグループ一覧も、引き継ぎ用に保存しておく
   if (actUnsub) actUnsub();
   actUnsub = onSnapshot(query(collection(db, "notifs", me, "items"), where("read", "==", false), limit(99)),
     s => window.DF && window.DF.setActBadge && window.DF.setActBadge(s.size), () => {});
@@ -861,9 +930,16 @@ async function meView() {
   try { await ensureAuth(); await loadMyProfile(true); } catch { root.innerHTML = `<p class="empty">つながりませんでした。通信状況を確認して、開き直してください。</p>`; return; }
   if (!myProfile) {
     const cur = profDraft(null);
-    root.innerHTML = `<div class="panel"><h2>マイページを作りましょう</h2>
+    root.innerHTML = `
+      <div class="panel acct" style="margin-bottom:20px">
+        <h2>🔑 前に DAILY FIND を使っていた人</h2>
+        <p>マイページを Google とつないでいた人は、Google でログインすると、そのマイページ・グループ・フォローに戻れます（Safari で作ったマイページを、ホーム画面のアイコンで使いたいときも）。</p>
+        <div class="actions"><button class="btn gbtn" id="gLogin">${G_LOGO}Google でログイン</button><span class="msg" id="gLoginMsg"></span></div>
+      </div>
+      <div class="panel"><h2>はじめての人：マイページを作りましょう</h2>
       <p>ニックネームと写真（なくてもOK）を決めると、投稿したり、気になる人をフォローしたりできます。メールアドレスもパスワードも要りません。</p>${profileEditorHtml(cur)}</div>`;
     bindProfileEditor(cur, meView);
+    $("gLogin").onclick = () => loginGoogle("gLoginMsg");
     return;
   }
   let following = [], followers = [], myPosts = [];
@@ -879,8 +955,17 @@ async function meView() {
     <section class="compose" id="compose" hidden style="margin-top:16px"></section>
     <div class="tabs2" style="margin-top:22px"><button data-t="posts">自分の投稿</button><button data-t="following">フォロー中</button><button data-t="followers">フォロワー</button></div>
     <div id="mbody"></div>
-    <p class="note" style="margin-top:36px">🔒 マイページは、このスマホのこのブラウザ（またはホーム画面のアイコン）に結びついています。メールやパスワードを使わないかわりに、ブラウザのデータを消したり別のスマホで開いたりすると、別の人として扱われます。</p>
+    <section class="panel acct" style="margin-top:36px">${googleEmail()
+      ? `<h2>✅ Google とつながっています</h2>
+         <p><b>${esc(googleEmail())}</b> とつながっています。ホーム画面のアイコンや別のスマホでも、マイページの「Google でログイン」を押せば、このマイページ・グループ・フォローに戻れます。</p>`
+      : `<h2>🔐 引き継げるようにしておく（おすすめ）</h2>
+         <p>いまのマイページは、<b>このスマホのこのブラウザだけ</b>に結びついています。iPhone では Safari とホーム画面のアイコンでも別の人になり、スマホを変えたりブラウザのデータを消したりすると元に戻れません。</p>
+         <p>Google とつないでおくと、どこでも「Google でログイン」するだけで、このマイページ・グループ・フォローに戻れます。</p>
+         <div class="actions"><button class="btn gbtn" id="gLink">${G_LOGO}Google とつなぐ</button><span class="msg" id="gLinkMsg"></span></div>
+         <p class="note">つなぐと、Google のメールアドレス・名前・写真がサイトの管理者に伝わります（ほかの人には見えません。サイトにも表示されません）。つながなくても、今までどおり使えます。</p>`}
+    </section>
     <button class="fab" id="fab" aria-label="投稿する">＋</button>`;
+  if ($("gLink")) $("gLink").onclick = async () => { if (await linkGoogle("gLinkMsg")) meView(); };
   const tabsOn = () => root.querySelectorAll(".tabs2 button").forEach(x => x.classList.toggle("on", x.dataset.t === meTab));
   root.querySelectorAll(".tabs2 button, .counts button").forEach(b => b.onclick = () => { meTab = b.dataset.t; tabsOn(); drawMe(); });
   $("newBtn").onclick = $("fab").onclick = () => openCompose(null, { kind: "pub" }, meView);
