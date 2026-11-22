@@ -338,8 +338,8 @@ def main():
         p["id"] = safe_id
         (OUT / "p" / f"{safe_id}.html").write_text(post_page(p, no), encoding="utf-8")
 
-    # トップページにも共有カード用の情報を入れる（いちばん新しい記事の画像を使う）
-    latest_img = next((image_url(p) for p, _ in numbered if image_url(p)), "")
+    # トップページにも共有カード用の情報を入れる（サイトのロゴ画像 icons/og.png を使う）
+    latest_img = f"{SITE}/icons/og.png" if (ROOT / "icons" / "og.png").exists() else ""
     idx = OUT / "index.html"
     tags = head(NAME, f"{TAGLINE} 本・映画・音楽・お店など、毎日ひとつおすすめを紹介します。", f"{SITE}/", latest_img, "website")
     tags = tags.split("<title>", 1)[1].split("\n", 1)[1]  # <title> より後ろのメタ情報だけ使う
