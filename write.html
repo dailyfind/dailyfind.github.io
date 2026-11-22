@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<!-- 【安全対策】この画面が読み込んだり通信したりしてよい相手を限定する -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://api.deezer.com; connect-src 'self' https://api.github.com https://itunes.apple.com https://*.mzstatic.com https://*.dzcdn.net; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <title>記事を書く｜DAILY FIND</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -190,7 +193,10 @@
 
   // ===== 新しい版が出ていたら自動で読み直す =====
   // （スマホは古い画面を最大10分ほど覚えているため）
-  const APP_VERSION = "6";
+  const APP_VERSION = "7";
+
+  // 【安全対策】ほかのサイトの中に埋め込まれて開かれたら、画面を出さない（だまして押させる攻撃の防止）
+  if (window.top !== window.self) { document.documentElement.innerHTML = ""; throw new Error("framed"); }
   (async () => {
     try {
       const html = await (await fetch("write.html?check=" + Date.now(), { cache: "no-store" })).text();
@@ -390,8 +396,10 @@
   // Apple のジャケットを取り込む（できなければ Apple の画像をそのまま表示）
   async function artworkToData(url) {
     try {
-      const res = await fetch(url, { mode: "cors" }); if (!res.ok) return null;
+      if (!/^https:\/\/([a-z0-9-]+\.)*(mzstatic\.com|dzcdn\.net)\//i.test(url)) return null;   // Apple / Deezer のジャケットだけ
+      const res = await fetch(url, { mode: "cors", credentials: "omit" }); if (!res.ok) return null;
       const blob = await res.blob();
+      if (!/^image\/(jpeg|png|webp)$/.test(blob.type) || blob.size > 10 * 1024 * 1024) return null;
       return await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(blob); });
     } catch { return null; }
   }
@@ -403,37 +411,76 @@
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); readImage(e.dataTransfer.files[0]); };
   $("clearImg").onclick = () => { imageData = null; imageUrl = ""; removeImage = true; $("file").value = ""; drawPreview(); };
 
-  // ===== 曲の検索（JSONP） =====
+  // ===== 曲の検索 =====
   // iPhone では Apple の検索APIが Apple Music アプリへ飛ばされて使えないため、
   // まず Apple Music を試し、だめなら Deezer の曲データ（ジャケット付き）を使う。
-  function jsonp(url, ms) {
-    return new Promise((resolve, reject) => {
-      const cb = "df_cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
-      const s = document.createElement("script");
-      const timer = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, ms);
-      function cleanup() { clearTimeout(timer); delete window[cb]; s.remove(); }
-      window[cb] = data => { cleanup(); resolve(data); };
-      s.onerror = () => { cleanup(); reject(new Error("network")); };
-      s.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
-      document.head.append(s);
-    });
-  }
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const appleSearchUrl = (title, artist) => "https://music.apple.com/jp/search?term=" + encodeURIComponent(`${title} ${artist}`.trim());
 
+  // 【安全対策】外部の検索結果は「データ」として受け取り、外部のプログラムはこの画面で動かさない。
+  //   Apple はデータとして直接取得（fetch）。Deezer はデータ取得に対応していないため、
+  //   鍵に触れられない隔離した枠（sandbox iframe）の中でだけ読み込む。
+  let sandboxFrame = null, sandboxReady = null;
+  const pendingCalls = new Map();
+  function getSandbox() {
+    if (sandboxReady) return sandboxReady;
+    sandboxReady = new Promise(resolve => {
+      sandboxFrame = document.createElement("iframe");
+      sandboxFrame.setAttribute("sandbox", "allow-scripts");   // allow-same-origin を付けない＝この画面の保存領域（鍵）に触れない
+      sandboxFrame.hidden = true;
+      sandboxFrame.srcdoc = `<script>
+        addEventListener("message", e => {
+          const { id, url } = e.data || {};
+          if (typeof url !== "string" || !/^https:\\/\\/api\\.deezer\\.com\\/search\\?/.test(url)) return;
+          const cb = "cb" + String(id).replace(/\\W/g, "");
+          const s = document.createElement("script");
+          window[cb] = d => { parent.postMessage({ id, data: JSON.parse(JSON.stringify(d)) }, "*"); s.remove(); };
+          s.onerror = () => parent.postMessage({ id, error: true }, "*");
+          s.src = url + "&callback=" + cb;
+          document.body.appendChild(s);
+        });
+      <\/script>`;
+      sandboxFrame.onload = () => resolve(sandboxFrame);
+      document.body.append(sandboxFrame);
+    });
+    return sandboxReady;
+  }
+  addEventListener("message", e => {
+    if (!sandboxFrame || e.source !== sandboxFrame.contentWindow) return;   // 隔離した枠からの返事だけ受け取る
+    const p = pendingCalls.get(e.data && e.data.id);
+    if (!p) return;
+    pendingCalls.delete(e.data.id);
+    e.data.error ? p.reject(new Error("network")) : p.resolve(e.data.data);
+  });
+  async function sandboxJsonp(url, ms) {
+    const frame = await getSandbox();
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    return new Promise((resolve, reject) => {
+      pendingCalls.set(id, { resolve, reject });
+      setTimeout(() => { if (pendingCalls.delete(id)) reject(new Error("timeout")); }, ms);
+      frame.contentWindow.postMessage({ id, url }, "*");
+    });
+  }
+  const str = v => (typeof v === "string" ? v : "");
+  const httpsOnly = u => (/^https:\/\//i.test(str(u)) ? str(u) : "");
+
   async function searchApple(term) {
-    const data = await jsonp("https://itunes.apple.com/search?" + new URLSearchParams({ term, country: "JP", media: "music", entity: "song", limit: 12, lang: "ja_jp" }), 5000);
-    return (data.results || []).map(t => ({
-      title: t.trackName || "", artist: t.artistName || "", album: t.collectionName || "", year: (t.releaseDate || "").slice(0, 4),
-      thumb: t.artworkUrl100 || "", artwork: (t.artworkUrl100 || "").replace("100x100bb", "1000x1000bb"), url: t.trackViewUrl || "",
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch("https://itunes.apple.com/search?" + new URLSearchParams({ term, country: "JP", media: "music", entity: "song", limit: 12, lang: "ja_jp" }), { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) throw new Error("apple");
+    const data = await res.json();
+    return (Array.isArray(data.results) ? data.results : []).map(t => ({
+      title: str(t.trackName), artist: str(t.artistName), album: str(t.collectionName), year: str(t.releaseDate).slice(0, 4),
+      thumb: httpsOnly(t.artworkUrl100), artwork: httpsOnly(str(t.artworkUrl100).replace("100x100bb", "1000x1000bb")), url: httpsOnly(t.trackViewUrl),
     }));
   }
   async function searchDeezer(term) {
-    const data = await jsonp("https://api.deezer.com/search?" + new URLSearchParams({ q: term, limit: 12, output: "jsonp" }), 8000);
-    return (data.data || []).map(t => ({
-      title: t.title || "", artist: t.artist?.name || "", album: t.album?.title || "", year: "",
-      thumb: t.album?.cover_medium || "", artwork: t.album?.cover_xl || "",
-      url: appleSearchUrl(t.title || "", t.artist?.name || ""),   // Apple Music で曲を探すリンク
+    const data = await sandboxJsonp("https://api.deezer.com/search?" + new URLSearchParams({ q: term, limit: 12, output: "jsonp" }), 8000);
+    return (Array.isArray(data && data.data) ? data.data : []).map(t => ({
+      title: str(t.title), artist: str(t.artist && t.artist.name), album: str(t.album && t.album.title), year: "",
+      thumb: httpsOnly(t.album && t.album.cover_medium), artwork: httpsOnly(t.album && t.album.cover_xl),
+      url: appleSearchUrl(str(t.title), str(t.artist && t.artist.name)),   // Apple Music で曲を探すリンク
     }));
   }
   let source = "Apple Music";
@@ -503,6 +550,7 @@
     const fields = {};
     for (const k of ["date", "category", "title", "by", "oneline", "body", "link"]) fields[k] = F[k].value.trim();
     if (!fields.title || !/^\d{4}-\d{2}-\d{2}$/.test(fields.date)) return setMsg("日付とタイトルは必須です。", false);
+    if (fields.link && !/^https?:\/\//i.test(fields.link)) return setMsg("リンクは https:// から始まるアドレスにしてください。", false);
     $("save").disabled = true; setMsg("GitHub に保存しています…", true);
     try {
       await loadRemote();                                   // 最新の状態から書き換える
