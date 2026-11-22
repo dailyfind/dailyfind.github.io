@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#111111">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261123d">
-<link rel="stylesheet" href="friends.css?v=20261123d">
+<link rel="stylesheet" href="style.css?v=20261123e">
+<link rel="stylesheet" href="friends.css?v=20261123e">
 </head>
 <body>
 <div class="wrap">
@@ -65,7 +65,7 @@
   <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="introLink" style="text-decoration:none">❓ DAILY FIND とは</a><a href="#feedback" style="text-decoration:none">💬 意見を送る</a><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a><span id="total"></span><a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
 </div>
 
-<script src="common.js?v=20261123d"></script>
+<script src="common.js?v=20261123e"></script>
 <script>
   let picks = [];
   let filter = "ALL";
@@ -380,7 +380,7 @@
   // ===== 新しい版が出ていたら自動で読み直す =====
   // ホーム画面に追加したアイコン（特に iPhone）は、前に開いた画面を覚えたままになりやすい。
   // 開いたときと、アプリに戻ってきたときに、公開中の版の番号を確かめて、違えば読み直す。
-  const APP_VERSION = "20261123d";   // 公開するたびに ?v= と一緒に上げる
+  const APP_VERSION = "20261123e";   // 公開するたびに ?v= と一緒に上げる
   async function checkUpdate() {
     try {
       const html = await (await fetch("/?vcheck=" + Date.now(), { cache: "no-store" })).text();
@@ -404,6 +404,6 @@
     friendsReady: () => { if (FRIENDS_VIEW(location.hash.slice(1))) route(); else if (picks.length && document.getElementById("homeExtras")) window.dispatchEvent(new Event("df:home")); },
   };
 </script>
-<script type="module" src="friends.js?v=20261123d"></script>
+<script type="module" src="friends.js?v=20261123e"></script>
 </body>
 </html>

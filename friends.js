@@ -484,6 +484,10 @@ async function deletePost(store, p) {
   batch.delete(postRef(store, p));
   if (isPublicSong(p)) batch.delete(songRef(store, p));
   await batch.commit();
+  // 自分の投稿を消したら、その投稿への「いいね」のお知らせも自分の一覧から消す
+  if (store === db && me && p.uid === me) {
+    try { const s = await getDocs(query(collection(db, "notifs", me, "items"), where("pid", "==", p.id))); await Promise.all(s.docs.map(d => deleteDoc(d.ref))); } catch {}
+  }
 }
 
 async function toggleLike(p, btn) {
@@ -524,7 +528,12 @@ async function groupView(gid, key) {
   setLast(gid);
   let member = null;
   try { const m = await getDoc(doc(db, "groups", gid, "members", me)); member = m.exists() ? m.data() : null; } catch {}
-  if (!member) return joinScreen(gid, key);
+  if (!member) {
+    // 前に入っていたグループ（名前を覚えている）なのに、今はメンバーではない → 削除されたか、外された
+    const was = loadGroups().find(g => g.gid === gid && g.name);
+    if (was) return goneScreen(was);
+    return joinScreen(gid, key);
+  }
   let g = null, inv = null;
   try { g = (await getDoc(doc(db, "groups", gid))).data(); inv = (await getDoc(doc(db, "groups", gid, "private", "invite"))).data(); } catch {}
   if (!g || !inv) { forgetGroup(gid); root.innerHTML = `<p class="empty">このグループは見つかりませんでした。閉じられたか、外された可能性があります。</p>`; return; }
@@ -637,6 +646,22 @@ function welcome(mode) {
       if ($("invitePanel")) $("invitePanel").hidden = false;
     } catch (e) { console.error(e); setMsg("gMsg", "作れませんでした。少し待ってからもう一度押してください。", false); $("gCreate").disabled = false; }
   };
+}
+
+// 入っていたグループに、今は入っていないとき
+function goneScreen(g) {
+  current = null;
+  root.innerHTML = `
+    ${groupSelectHtml("gone")}
+    <div class="panel">
+      <h2>「${esc(g.name)}」には、今は入っていません</h2>
+      <p>グループが削除されたか、メンバーから外れた可能性があります。</p>
+      <div class="actions"><button class="btn" id="goneDel">一覧から消す</button><button class="btn ghost" id="goneJoin">もう一度参加してみる</button></div>
+      <p class="note">もう一度参加するには、グループの人から新しい招待リンクをもらってください。</p>
+    </div>`;
+  bindGroupSelect();
+  $("goneDel").onclick = () => { forgetGroup(g.gid); stop(); groupView(); };
+  $("goneJoin").onclick = () => { stop(); joinScreen(g.gid, g.key); };
 }
 
 function joinScreen(gid, key) {
