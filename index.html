@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#111111">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="friends.css">
+<link rel="stylesheet" href="style.css?v=20261122c">
+<link rel="stylesheet" href="friends.css?v=20261122c">
 </head>
 <body>
 <div class="wrap">
@@ -51,7 +51,7 @@
   <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a>　<span id="total"></span>　<a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
 </div>
 
-<script src="common.js"></script>
+<script src="common.js?v=20261122c"></script>
 <script>
   let picks = [];
   let filter = "ALL";
@@ -61,7 +61,7 @@
   function feature(p) {
     return `
       <article class="feature">
-        ${cover(p)}
+        ${cover(p, "", true)}
         <div>
           <div class="kicker">${cat(p.category).en} / ${esc(p.category)}<span class="no">${no(p)} · ${fmtDate(p.date)}</span></div>
           <h2>${esc(p.title)}</h2>
@@ -256,8 +256,19 @@
   // ===== 画面の切り替え（おすすめ / グループ / みんなのプレイリスト / 管理） =====
   const FRIENDS_VIEW = h => /^(g=|group$|all$|admin$)/.test(h);
   const navOf = h => h.startsWith("g=") ? "group" : (FRIENDS_VIEW(h) ? h : "");
+  let adminOn = false;
   function setNav(v) {
+    // 「管理」は、管理者としてログイン中か、管理画面を開いているときだけ出す
+    document.getElementById("navAdmin").hidden = !(adminOn || v === "admin");
     document.querySelectorAll("#mainnav button").forEach(b => b.classList.toggle("on", b.dataset.go === v));
+    // 選んだメニューが画面の外にはみ出していたら、見えるところまで横にずらす
+    requestAnimationFrame(() => {
+      const nav = document.getElementById("mainnav"), on = nav.querySelector(".on");
+      if (!on) return;
+      const left = on.offsetLeft - nav.offsetLeft, right = left + on.offsetWidth;
+      if (right > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = right - nav.clientWidth + 8;
+      else if (left < nav.scrollLeft) nav.scrollLeft = left;
+    });
   }
   function route() {
     const h = location.hash.slice(1);
@@ -311,10 +322,10 @@
 
   window.DF = {
     setNav,
-    setAdmin: on => { document.getElementById("navAdmin").hidden = !on; },
+    setAdmin: on => { adminOn = on; setNav(navOf(location.hash.slice(1))); },
     friendsReady: () => { if (FRIENDS_VIEW(location.hash.slice(1))) route(); else if (picks.length && document.getElementById("homeExtras")) window.dispatchEvent(new Event("df:home")); },
   };
 </script>
-<script type="module" src="friends.js"></script>
+<script type="module" src="friends.js?v=20261122c"></script>
 </body>
 </html>

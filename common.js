@@ -72,9 +72,10 @@ const paras = b => String(b || "").trim().split(/\n\s*\n/).filter(Boolean)
   .map(t => `<p>${esc(t.trim()).replace(/\n/g, "<br>")}</p>`).join("");
 
 // 画像。なければカテゴリの色と英字で「表紙」をつくる
-function cover(p, cls = "") {
+function cover(p, cls = "", eager = false) {
   const img = safeImage(p.image);
-  if (img) return `<div class="cover ${p.category === "音楽" ? "sq" : ""} ${cls}"><img src="${esc(img)}" alt="${esc(p.title)}" loading="lazy"></div>`;
+  // 画面の上に出る大きな画像（eager）はすぐ読み込み、一覧の画像は見えるところまで来てから読み込む
+  if (img) return `<div class="cover ${p.category === "音楽" ? "sq" : ""} ${cls}"><img src="${esc(img)}" alt="${esc(p.title)}" ${eager ? `fetchpriority="high"` : `loading="lazy"`}></div>`;
   return `<div class="cover cover-type ${cls}" style="--tone:${cat(p.category).tone}">
     <span class="cover-en">${cat(p.category).en}</span>
     <span class="cover-ja">${esc(p.title)}</span>

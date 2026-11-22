@@ -13,7 +13,7 @@
 <title>記事を書く｜DAILY FIND</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261122c">
 <!--
   スマホ・パソコンどちらからでも使える「記事を書く」画面（GitHub 版）。
   記事は GitHub の picks.json に、画像は images/ に直接保存されます。
@@ -191,14 +191,14 @@
   </div>
 </div>
 
-<script src="common.js"></script>
+<script src="common.js?v=20261122c"></script>
 <script>
   const $ = id => document.getElementById(id);
   const form = $("form"), F = form.elements;
 
   // ===== 新しい版が出ていたら自動で読み直す =====
   // （スマホは古い画面を最大10分ほど覚えているため）
-  const APP_VERSION = "8";
+  const APP_VERSION = "9";
 
   // 【安全対策】ほかのサイトの中に埋め込まれて開かれたら、画面を出さない（だまして押させる攻撃の防止）
   if (window.top !== window.self) { document.documentElement.innerHTML = ""; throw new Error("framed"); }

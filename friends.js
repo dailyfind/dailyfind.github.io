@@ -225,7 +225,10 @@ function groupScreen() {
         ${isOwner ? `<h2 style="font-size:16px;margin-top:10px">メンバー</h2><div id="mlist"></div>
           <p>知らない人が入っていたら「外す」を押してから、招待リンクを作り直してください。</p>
           <div class="actions"><button class="btn small ghost" id="rotate">招待リンクを作り直す</button><span class="msg" id="rotMsg"></span></div>` : ""}
-        <div class="actions" style="margin-top:10px"><button class="btn small ghost" id="leave">このグループを抜ける</button></div>
+        ${isOwner
+          ? `<p style="margin-top:10px">あなたはこのグループを作った人なので、抜けることはできません（抜けると、誰もメンバーを管理できなくなるため）。グループが要らなくなったら削除してください。</p>
+             <div class="actions"><button class="btn small ghost" id="delGroup">このグループを削除する（全員の投稿も消えます）</button><span class="msg" id="delMsg"></span></div>`
+          : `<div class="actions" style="margin-top:10px"><button class="btn small ghost" id="leave">このグループを抜ける</button></div>`}
       </div>
     </details>`;
   bindPicker("ePick", prof); bindGroupSelect();
@@ -238,9 +241,22 @@ function groupScreen() {
     try { await updateDoc(doc(db, "groups", current.gid, "members", me), { nickname: n, icon: prof.icon, color: prof.color }); Object.assign(current, { nickname: n, icon: prof.icon, color: prof.color }); setMsg("nickMsg", "変更しました（これからの投稿に使われます）", true); }
     catch { setMsg("nickMsg", "変更できませんでした", false); }
   };
-  $("leave").onclick = e => armed(e.target, "このグループを抜ける", async () => {
+  if ($("leave")) $("leave").onclick = e => armed(e.target, "このグループを抜ける", async () => {
     try { await deleteDoc(doc(db, "groups", current.gid, "members", me)); } catch {}
     forgetGroup(current.gid); stop(); current = null; groupView();
+  });
+  // グループを作った人だけ：グループごと削除（投稿・公開曲・メンバー・合言葉・グループ）
+  if ($("delGroup")) $("delGroup").onclick = e => armed(e.target, "このグループを削除する（全員の投稿も消えます）", async () => {
+    const gid = current.gid; stop();
+    const [ps, ms] = await Promise.all([getDocs(collection(db, "groups", gid, "posts")), getDocs(collection(db, "groups", gid, "members"))]);
+    const refs = [];
+    ps.forEach(d => { refs.push(d.ref); if (isPublicSong(d.data())) refs.push(doc(db, "songs", songId(gid, d.id))); });
+    ms.forEach(d => { if (d.id !== me) refs.push(d.ref); });
+    refs.push(doc(db, "groups", gid, "private", "invite"));
+    for (let i = 0; i < refs.length; i += 400) { const b = writeBatch(db); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit(); }
+    await deleteDoc(doc(db, "groups", gid));                     // グループを消してから
+    await deleteDoc(doc(db, "groups", gid, "members", me));      // 最後に自分を消す
+    forgetGroup(gid); current = null; groupView();
   });
   if (isOwner) $("rotate").onclick = async () => {
     const key = randomKey();
