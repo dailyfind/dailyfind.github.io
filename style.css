@@ -71,6 +71,18 @@ img { display: block; max-width: 100%; }
   text-decoration: none; color: var(--paper); background: var(--ink); border-radius: 99px; padding: 10px 22px;
 }
 .more:hover { background: var(--accent); }
+/* 音楽アプリを選ぶ */
+.other-apps { margin-top: 10px; font-size: 13px; color: var(--muted); line-height: 1.9; }
+.other-apps a { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.listenbox { display: inline-flex; align-items: center; gap: 2px; position: relative; }
+.listenbox .listen, .listenbox .tlisten { border-radius: 99px 0 0 99px; }
+.lmenu summary { list-style: none; cursor: pointer; font-size: 12px; border: 1px solid var(--hair); border-left: 0; border-radius: 0 99px 99px 0; padding: 3px 9px; line-height: 1.5; }
+.lmenu summary::-webkit-details-marker { display: none; }
+.lmenu[open] summary { border-color: var(--ink); }
+.lmenu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; background: var(--paper); border: 1px solid var(--ink); border-radius: 10px; padding: 6px; min-width: 190px; display: grid; box-shadow: 0 10px 24px rgba(0,0,0,.14); }
+.lmenu-pop a { padding: 9px 10px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 700; color: var(--ink); }
+.lmenu-pop a:hover { background: var(--card); }
+.lm-h, .lm-f { font-size: 11px; color: var(--muted); padding: 4px 10px; }
 
 /* ===== バックナンバー ===== */
 .section-head { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--rule); padding-top: 14px; margin-bottom: 26px; }

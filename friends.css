@@ -8,6 +8,18 @@
 .mainnav button.on { color: var(--ink); border-color: var(--ink); font-weight: 700; }
 .mainnav .badge { display: inline-block; min-width: 8px; height: 8px; border-radius: 99px; background: var(--accent); margin-left: 4px; vertical-align: 2px; }
 
+/* ホーム画面に追加する方法 */
+.a2hs { margin: 14px 0 0; background: var(--ink); color: var(--paper); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+.a2hs-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.a2hs-btns { display: flex; gap: 6px; flex: none; }
+.a2hs button { font: inherit; font-size: 12px; font-weight: 700; border-radius: 99px; padding: 5px 12px; cursor: pointer; border: 1px solid rgba(255,255,255,.5); background: transparent; color: inherit; }
+.a2hs #a2hsOpen { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+.a2hs-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.25); line-height: 1.8; }
+.a2hs-body ol { margin: 4px 0 12px; padding-left: 1.4em; }
+.a2hs-body .key { display: inline-block; border: 1px solid rgba(255,255,255,.6); border-radius: 6px; padding: 0 6px; font-size: 12px; }
+.a2hs-warn { background: var(--accent); color: #fff; border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; }
+.a2hs-tip { font-size: 12px; opacity: .85; margin: 0; }
+
 #fapp { padding: 22px 0 40px; }
 #fapp label, #fapp .lbl { display: grid; gap: 6px; font-size: 12px; letter-spacing: .08em; color: var(--muted); font-weight: 500; }
 #fapp input, #fapp select, #fapp textarea { font: inherit; font-size: 16px; color: var(--ink); background: var(--paper); border: 1px solid var(--hair); border-radius: 8px; padding: 11px 12px; width: 100%; letter-spacing: normal; }

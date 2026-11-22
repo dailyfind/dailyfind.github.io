@@ -76,6 +76,21 @@ def cta(p):
     return svc + cat(p.get("category"))[2]
 
 
+def music_links(p):
+    """Apple Music / Spotify / LINE MUSIC / YouTube Music のリンク（曲のリンクがあればそれ、なければ検索）"""
+    from urllib.parse import quote, urlparse
+    q = quote(f"{p.get('title', '')} {p.get('by', '')}".strip())
+    link = safe_link(p.get("link"))
+    host = urlparse(link).hostname or ""
+    apps = [
+        ("Apple Music", ("music.apple.com", "itunes.apple.com"), f"https://music.apple.com/jp/search?term={q}"),
+        ("Spotify", ("spotify.com",), f"https://open.spotify.com/search/{q}"),
+        ("LINE MUSIC", ("music.line.me",), f"https://music.line.me/webapp/search?query={q}"),
+        ("YouTube Music", ("youtube.com", "youtu.be"), f"https://music.youtube.com/search?q={q}"),
+    ]
+    return [(name, link if link and any(host == h or host.endswith("." + h) for h in hosts) else url) for name, hosts, url in apps]
+
+
 def stars(n):
     n = max(0, min(5, int(n or 0)))
     return f'<span class="stars" aria-label="5段階中{n}">{"★" * n}<span class="off">{"★" * (5 - n)}</span></span>'
@@ -127,6 +142,12 @@ def post_page(p, no):
                  f'<span class="cover-ja">{e(p.get("title"))}</span></div>')
     link = safe_link(p.get("link"))
     more = f'<a class="more" href="{e(link)}" target="_blank" rel="noopener noreferrer">{e(cta(p))} ↗</a>' if link else ""
+    if p.get("category") == "音楽":
+        apps = music_links(p)
+        first, rest = apps[0], apps[1:]
+        more = (f'<a class="more" href="{e(first[1])}" target="_blank" rel="noopener noreferrer">{e(first[0])} で聴いてみる ↗</a>'
+                f'<div class="other-apps">ほかのアプリで聴く：' +
+                " · ".join(f'<a href="{e(u)}" target="_blank" rel="noopener noreferrer">{e(n)}</a>' for n, u in rest) + "</div>")
     from urllib.parse import quote
     share_text = quote(f"{NAME}：{p.get('title', '')}" + (f"｜{p['oneline']}" if p.get("oneline") else ""))
     share_url = quote(url, safe="")
@@ -178,11 +199,12 @@ def main():
     numbered.reverse()                            # 新しい順
 
     if OUT.exists():
-        shutil.rmtree(OUT)
-    shutil.copytree(ROOT, OUT, ignore=lambda d, names: [n for n in names if n in SKIP] if Path(d) == ROOT else [])
+        shutil.rmtree(OUT, ignore_errors=True)   # パソコンで試すとき、使用中のフォルダが残っても続ける
+    shutil.copytree(ROOT, OUT, dirs_exist_ok=True,
+                    ignore=lambda d, names: [n for n in names if n in SKIP] if Path(d) == ROOT else [])
 
     # 記事ごとのページ
-    (OUT / "p").mkdir()
+    (OUT / "p").mkdir(exist_ok=True)
     for p, no in numbered:
         safe_id = "".join(ch for ch in str(p["id"]) if ch.isalnum() or ch in "-_")
         p["id"] = safe_id

@@ -36,10 +36,19 @@
     <button data-go="admin" id="navAdmin" hidden>管理</button>
   </nav>
 
+  <!-- ホーム画面に追加する方法（スマホで、まだ追加していないときだけ上に出る） -->
+  <div class="a2hs" id="a2hs" hidden>
+    <div class="a2hs-top">
+      <span>📱 ホーム画面に追加すると、アプリみたいにすぐ開けます</span>
+      <span class="a2hs-btns"><button type="button" id="a2hsOpen">やり方を見る</button><button type="button" id="a2hsClose" aria-label="閉じる">×</button></span>
+    </div>
+    <div class="a2hs-body" id="a2hsBody" hidden></div>
+  </div>
+
   <main id="app"></main>
   <section id="fapp" hidden></section>
 
-  <footer><span>© <span id="year"></span> DAILY FIND</span><span><span id="total"></span>　<a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
+  <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a>　<span id="total"></span>　<a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
 </div>
 
 <script src="common.js"></script>
@@ -60,7 +69,8 @@
           ${stars(p.rating || 0)}
           ${p.oneline ? `<p class="pull">${esc(p.oneline)}</p>` : ""}
           <div class="body">${paras(p.body)}</div>
-          ${safeLink(p.link) ? `<a class="more" href="${esc(safeLink(p.link))}" target="_blank" rel="noopener noreferrer">${esc(ctaLabel(p))} ↗</a>` : ""}
+          ${p.category === "音楽" ? listenHtml(p, true)
+            : safeLink(p.link) ? `<a class="more" href="${esc(safeLink(p.link))}" target="_blank" rel="noopener noreferrer">${esc(ctaLabel(p))} ↗</a>` : ""}
           ${share(p)}
         </div>
       </article>`;
@@ -114,7 +124,7 @@
               <span class="tt"><b>${esc(p.title)}</b><small>${esc(p.by || "")}</small></span>
             </a>
             ${stars(p.rating || 0)}
-            ${safeLink(p.link) ? `<a class="tlisten" href="${esc(safeLink(p.link))}" target="_blank" rel="noopener noreferrer">聴く ↗</a>` : `<span></span>`}
+            ${p.category === "音楽" ? listenHtml(p, false) : safeLink(p.link) ? `<a class="tlisten" href="${esc(safeLink(p.link))}" target="_blank" rel="noopener noreferrer">見る ↗</a>` : `<span></span>`}
           </li>`).join("")}
         </ol>
       </section>`;
@@ -269,6 +279,36 @@
     else location.hash = target;
     window.scrollTo(0, 0);
   });
+  // ===== ホーム画面に追加する方法 =====
+  (() => {
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/.test(ua);
+    const inLINE = / Line\//i.test(ua);
+    const inApp = inLINE || /Instagram|FBAN|FBAV|Twitter/i.test(ua);
+    const standalone = window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+    const share = `<svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-3px" aria-label="共有ボタン"><path fill="currentColor" d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-3v2h1v8H7v-8h1v-2z"/></svg>`;
+    const iosSteps = `<b>iPhone（Safari）</b><ol>
+      <li>画面の下（iPad は上）にある <span class="key">${share} 共有</span> ボタンを押す</li>
+      <li>メニューを下にスクロールして「<b>ホーム画面に追加</b>」を押す</li>
+      <li>右上の「<b>追加</b>」を押す → ホーム画面に黒い「DF」のアイコンができます</li></ol>`;
+    const androidSteps = `<b>Android（Chrome）</b><ol>
+      <li>右上の <span class="key">︙</span> を押す</li>
+      <li>「<b>ホーム画面に追加</b>」または「<b>アプリをインストール</b>」を押す</li>
+      <li>「追加」を押す → ホーム画面に「DF」のアイコンができます</li></ol>`;
+    const lineNote = inApp ? `<p class="a2hs-warn">⚠️ 今は${inLINE ? " LINE " : "アプリ"}の中で開いています。このままではホーム画面に追加できません。<br>
+      右下（または右上）のメニュー「︙」から「<b>ブラウザで開く</b>」を押して、${isAndroid ? "Chrome" : "Safari"} で開き直してください。</p>` : "";
+    const body = `${lineNote}${isIOS ? iosSteps : isAndroid ? androidSteps : iosSteps + androidSteps}
+      <p class="a2hs-tip">💡 グループに参加するときは、<b>先にホーム画面に追加して、アイコンから開いてから</b>参加してください。${isAndroid ? "ブラウザ" : "Safari"} とホーム画面のアイコンは、別々にログイン状態を覚えるためです。</p>`;
+    const box = document.getElementById("a2hs"), bodyEl = document.getElementById("a2hsBody");
+    bodyEl.innerHTML = body;
+    let closed = false; try { closed = localStorage.getItem("df_a2hs_closed") === "1"; } catch {}
+    if ((isIOS || isAndroid) && !standalone && !closed) box.hidden = false;
+    document.getElementById("a2hsOpen").onclick = () => { bodyEl.hidden = !bodyEl.hidden; };
+    document.getElementById("a2hsClose").onclick = () => { box.hidden = true; try { localStorage.setItem("df_a2hs_closed", "1"); } catch {} };
+    document.getElementById("a2hsLink").onclick = e => { e.preventDefault(); box.hidden = false; bodyEl.hidden = false; box.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  })();
+
   window.DF = {
     setNav,
     setAdmin: on => { document.getElementById("navAdmin").hidden = !on; },

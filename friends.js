@@ -59,7 +59,8 @@ function randomKey(n = 28) {
   const abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
   return [...crypto.getRandomValues(new Uint32Array(n))].map(x => abc[x % abc.length]).join("");
 }
-const inviteUrl = (gid, key) => `${location.origin}/#g=${encodeURIComponent(gid)}&k=${encodeURIComponent(key)}`;
+// openExternalBrowser=1：LINE で開いたとき、LINE の中ではなく Safari / Chrome で開かせる（ホーム画面に追加できるように）
+const inviteUrl = (gid, key) => `${location.origin}/?openExternalBrowser=1#g=${encodeURIComponent(gid)}&k=${encodeURIComponent(key)}`;
 
 // ===== この端末に覚えておくグループ =====
 const LS_KEY = "dff_groups";
@@ -280,7 +281,7 @@ function postHtml(p, canDelete) {
         ${p.oneline ? `<p>${esc(p.oneline)}</p>` : ""}
         <div class="ops">
           ${likeBtn(p)}
-          ${link ? `<a class="listen" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(ctaLabel(p))} ↗</a>` : ""}
+          ${p.category === "音楽" ? listenHtml(p, false) : link ? `<a class="listen" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(ctaLabel(p))} ↗</a>` : ""}
           ${mine ? `<button class="txt" data-edit="${esc(p.id)}">編集</button>` : ""}
           ${mine || canDelete ? `<button class="txt" data-del="${esc(p.id)}">削除</button>` : ""}
           ${likeCount(p) ? `<div class="likers">♥ ${esc(likersText(p))}</div>` : ""}
@@ -299,7 +300,7 @@ function drawGroupBody() {
       <div class="flist">${songs.length ? songs.map((p, i) => `
         <div class="tr"><span class="no">${String(i + 1).padStart(2, "0")}</span>${cover({ title: p.title, category: "音楽", image: p.image })}
           <div class="ft"><b>${esc(p.title)}</b><small>${esc(p.by || "")} · ${esc(p.nickname)}</small></div>
-          <div class="end">${likeBtn(p)}${safeLink(p.link) ? `<a class="listen" href="${esc(safeLink(p.link))}" target="_blank" rel="noopener noreferrer">聴く ↗</a>` : ""}</div></div>`).join("") : `<p class="empty">まだ曲がありません。</p>`}</div>`;
+          <div class="end">${likeBtn(p)}${listenHtml(p, false)}</div></div>`).join("") : `<p class="empty">まだ曲がありません。</p>`}</div>`;
   } else {
     body.innerHTML = posts.length ? posts.map(p => postHtml(p, current.owner === me)).join("") : `<p class="empty">まだ投稿がありません。「＋ 投稿する」から、最初の1つをシェアしましょう。</p>`;
   }
@@ -429,7 +430,7 @@ let pubSort = "new";
 const songRow = (s, i, extra = "") => `
   <div class="tr"><span class="no">${String(i + 1).padStart(2, "0")}</span>${cover({ title: s.title, category: "音楽", image: s.image })}
     <div class="ft"><b>${esc(s.title)}</b><small>${esc(s.by || "")}</small></div>
-    <div class="end">${s.likeCount ? `<span class="cnt">♥ ${s.likeCount | 0}</span>` : ""}${safeLink(s.link) ? `<a class="listen" href="${esc(safeLink(s.link))}" target="_blank" rel="noopener noreferrer">聴く ↗</a>` : ""}${extra}</div></div>`;
+    <div class="end">${s.likeCount ? `<span class="cnt">♥ ${s.likeCount | 0}</span>` : ""}${listenHtml(s, false)}${extra}</div></div>`;
 function publicView() {
   root.innerHTML = `
     <div class="pl-top">

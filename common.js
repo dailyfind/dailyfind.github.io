@@ -23,6 +23,40 @@ function ctaLabel(p) {
   return (svc && p.category === "音楽" ? svc + " で" : "") + cat(p.category).cta;
 }
 
+// ===== 音楽アプリ（Apple Music / Spotify / LINE MUSIC / YouTube Music） =====
+// 曲そのもののリンクがあればそれを使い、ほかのアプリは「曲名＋アーティスト」で検索するリンクにする。
+// 最後に選んだアプリを覚えて、次から一番目に出す（この端末だけ）。
+const MUSIC_APPS = [
+  { id: "apple",   name: "Apple Music",   host: /(^|\.)music\.apple\.com$|(^|\.)itunes\.apple\.com$/, search: q => `https://music.apple.com/jp/search?term=${q}` },
+  { id: "spotify", name: "Spotify",       host: /(^|\.)spotify\.com$/,                               search: q => `https://open.spotify.com/search/${q}` },
+  { id: "line",    name: "LINE MUSIC",    host: /(^|\.)music\.line\.me$/,                            search: q => `https://music.line.me/webapp/search?query=${q}` },
+  { id: "ytm",     name: "YouTube Music", host: /(^|\.)youtube\.com$|(^|\.)youtu\.be$/,             search: q => `https://music.youtube.com/search?q=${q}` },
+];
+const getMusicApp = () => { try { return localStorage.getItem("df_music") || "apple"; } catch { return "apple"; } };
+function musicLinks(p) {
+  const q = encodeURIComponent(`${p.title || ""} ${p.by || ""}`.trim());
+  let host = ""; try { host = new URL(p.link).hostname; } catch {}
+  const links = MUSIC_APPS.map(a => ({ id: a.id, name: a.name, url: (safeLink(p.link) && a.host.test(host)) ? safeLink(p.link) : a.search(q) }));
+  const pref = getMusicApp();
+  return links.sort((a, b) => (b.id === pref) - (a.id === pref));
+}
+// 曲の「聴く」ボタン。big=true は特集用の大きなボタン、false は一覧用の小さなボタン
+function listenHtml(p, big) {
+  const [first, ...rest] = musicLinks(p);
+  const a = (l, cls, label) => `<a class="${cls}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" data-music-app="${l.id}">${label}</a>`;
+  if (big) return `${a(first, "more", `${esc(first.name)} で聴いてみる ↗`)}
+    <div class="other-apps">ほかのアプリで聴く：${rest.map(l => a(l, "", esc(l.name))).join(" · ")}</div>`;
+  return `<span class="listenbox">${a(first, "listen", `聴く ↗`)}<details class="lmenu"><summary aria-label="ほかの音楽アプリで聴く">▾</summary>
+    <div class="lmenu-pop"><span class="lm-h">アプリを選ぶ</span>${[first, ...rest].map(l => a(l, "", esc(l.name))).join("")}<span class="lm-f">選んだアプリを次から最初に出します</span></div></details></span>`;
+}
+// どれかのアプリで開いたら、そのアプリを覚える
+document.addEventListener("click", e => {
+  const el = e.target.closest && e.target.closest("[data-music-app]");
+  if (el) { try { localStorage.setItem("df_music", el.dataset.musicApp); } catch {} }
+  // 開いているアプリ選択メニューは、外を押したら閉じる
+  document.querySelectorAll("details.lmenu[open]").forEach(d => { if (!d.contains(e.target)) d.open = false; });
+});
+
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = d => { const [y, m, day] = d.split("-"); return `${y}.${m}.${day}`; };
