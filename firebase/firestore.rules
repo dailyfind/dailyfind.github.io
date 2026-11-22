@@ -1,6 +1,7 @@
 rules_version = '2';
-// DAILY FIND FRIENDS のデータの守り（Firestore セキュリティルール） v3
+// DAILY FIND FRIENDS のデータの守り（Firestore セキュリティルール） v4
 //
+// v4：プロフィール（写真アイコン）・フォロー・みんなへの投稿（パブリック投稿）を追加
 // ・友達は「匿名ログイン」だけ（メール・パスワード・名前は使わない）
 // ・グループの中身（メンバー・投稿・いいね・ひとこと）は、そのグループのメンバーと管理者だけが読める
 // ・グループは誰でも作れる。参加には招待リンクの合言葉が必要
@@ -23,6 +24,28 @@ service cloud.firestore {
     function httpsOrEmpty(v) { return v is string && v.size() <= 500 && (v == "" || v.matches('^https://[^\\s"<>]+$')); }
     function iconOk(v) { return v is string && v.size() >= 1 && v.size() <= 8; }
     function colorOk(v) { return v in ['#8a3a2c', '#2c3a48', '#4a5240', '#463e5c', '#2c4644', '#47292f', '#b07a2a', '#3b3936']; }
+    function pubDoc(pid) { return /databases/$(database)/documents/pubposts/$(pid); }
+    function profileDoc(uid) { return /databases/$(database)/documents/profiles/$(uid); }
+    // 写真アイコン：小さくした JPEG（文字にしたもの）だけ。空なら写真なし
+    function photoOk(v) { return v is string && v.size() <= 60000 && (v == '' || v.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$')); }
+    // 投稿の中身（グループの投稿・みんなへの投稿で共通）
+    function validPost(d) {
+      return d.keys().hasOnly(['uid', 'nickname', 'icon', 'color', 'category', 'title', 'by', 'oneline', 'link', 'image',
+                               'rating', 'public', 'likes', 'createdAt', 'updatedAt'])
+        && d.uid == request.auth.uid
+        && str(d.nickname, 1, 20) && iconOk(d.icon) && colorOk(d.color)
+        && d.category in ['本', '映画', '音楽', 'お店', 'アニメ', 'ゲーム', 'その他']
+        && str(d.title, 1, 100) && str(d.by, 0, 100) && str(d.oneline, 0, 200)
+        && httpsOrEmpty(d.link) && httpsOrEmpty(d.image)
+        && d.rating is int && d.rating >= 0 && d.rating <= 5
+        && d.public is bool && d.likes is map;
+    }
+    // いいね：自分の分だけ付けたり外したりできる
+    function likeOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+        && request.resource.data.likes.diff(resource.data.likes).affectedKeys().hasOnly([request.auth.uid])
+        && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid] == true);
+    }
 
     // 管理者の一覧（本人が自分の分を確認できるだけ。追加・削除は Firebase の画面からのみ）
     match /admins/{uid} {
@@ -33,7 +56,7 @@ service cloud.firestore {
     match /groups/{gid} {
       // グループ名・作成日は、メンバーと管理者が読める（管理者は中身は読めない）
       allow read: if isMember(gid) || isAdmin();
-      allow create: if signedIn()
+      allow create: if signedIn() && gid != 'pub'
         && request.resource.data.keys().hasOnly(['name', 'owner', 'createdAt'])
         && request.resource.data.owner == request.auth.uid
         && str(request.resource.data.name, 1, 30)
@@ -77,17 +100,6 @@ service cloud.firestore {
       }
 
       match /posts/{pid} {
-        function validPost(d) {
-          return d.keys().hasOnly(['uid', 'nickname', 'icon', 'color', 'category', 'title', 'by', 'oneline', 'link', 'image',
-                                   'rating', 'public', 'likes', 'createdAt', 'updatedAt'])
-            && d.uid == request.auth.uid
-            && str(d.nickname, 1, 20) && iconOk(d.icon) && colorOk(d.color)
-            && d.category in ['本', '映画', '音楽', 'お店', 'アニメ', 'ゲーム', 'その他']
-            && str(d.title, 1, 100) && str(d.by, 0, 100) && str(d.oneline, 0, 200)
-            && httpsOrEmpty(d.link) && httpsOrEmpty(d.image)
-            && d.rating is int && d.rating >= 0 && d.rating <= 5
-            && d.public is bool && d.likes is map;
-        }
         allow read: if isMember(gid) || isAdmin();
         allow create: if isMember(gid) && validPost(request.resource.data)
           && request.resource.data.likes.size() == 0
@@ -100,20 +112,64 @@ service cloud.firestore {
           && request.resource.data.createdAt == resource.data.createdAt
           && request.resource.data.updatedAt == request.time;
         // いいね：メンバーなら誰でも、自分の分だけ付けたり外したりできる
-        allow update: if isMember(gid)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
-          && request.resource.data.likes.diff(resource.data.likes).affectedKeys().hasOnly([request.auth.uid])
-          && (!(request.auth.uid in request.resource.data.likes) || request.resource.data.likes[request.auth.uid] == true);
+        allow update: if isMember(gid) && likeOnly();
         allow delete: if (signedIn() && (resource.data.uid == request.auth.uid || isOwner(gid))) || isAdmin();
       }
     }
 
-    // みんなのプレイリスト：ドキュメント名は「グループID_投稿ID」
+    // プロフィール（サイト全体で1人1つ）：誰でも1件ずつ見られる（一覧は管理者だけ）。書けるのは本人だけ
+    match /profiles/{uid} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nickname', 'icon', 'color', 'photo', 'bio', 'updatedAt'])
+        && str(request.resource.data.nickname, 1, 20)
+        && iconOk(request.resource.data.icon)
+        && colorOk(request.resource.data.color)
+        && photoOk(request.resource.data.photo)
+        && str(request.resource.data.bio, 0, 160)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if (signedIn() && request.auth.uid == uid) || isAdmin();
+    }
+
+    // フォロー：ドキュメント名は「フォローする人_される人」。プロフィールを持っている人どうしだけ
+    match /follows/{fid} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['from', 'to', 'createdAt'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string && request.resource.data.to != request.auth.uid
+        && fid == request.auth.uid + '_' + request.resource.data.to
+        && exists(profileDoc(request.auth.uid)) && exists(profileDoc(request.resource.data.to))
+        && request.resource.data.createdAt == request.time;
+      allow delete: if (signedIn() && resource.data.from == request.auth.uid) || isAdmin();
+    }
+
+    // みんなへの投稿（パブリック投稿）：誰でも見られる。書けるのはプロフィールを持っている本人だけ
+    match /pubposts/{pid} {
+      allow read: if true;
+      allow create: if signedIn() && exists(profileDoc(request.auth.uid))
+        && validPost(request.resource.data)
+        && request.resource.data.likes.size() == 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+        && validPost(request.resource.data)
+        && request.resource.data.likes == resource.data.likes
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn() && likeOnly();
+      allow delete: if (signedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+    }
+
+    // みんなのプレイリスト：ドキュメント名は「グループID_投稿ID」（みんなへの投稿は「pub_投稿ID」）
     // 中身は必ず元の投稿（音楽・公開する）と同じでなければ書けない
     match /songs/{sid} {
       function gidOf() { return sid.split('_')[0]; }
       function pidOf() { return sid.split('_')[1]; }
-      function postAfter() { return getAfter(postDoc(gidOf(), pidOf())).data; }
+      function isPub() { return gidOf() == 'pub'; }
+      function srcDoc() { return isPub() ? pubDoc(pidOf()) : postDoc(gidOf(), pidOf()); }
+      function postAfter() { return getAfter(srcDoc()).data; }
       function matchesPost(d) {
         return d.keys().hasOnly(['title', 'by', 'image', 'link', 'likeCount', 'createdAt'])
           && postAfter().category == '音楽' && postAfter().public == true
@@ -127,11 +183,11 @@ service cloud.firestore {
         && matchesPost(request.resource.data)
         && request.resource.data.createdAt == request.time;
       // 投稿の編集やいいねと一緒に、同じ内容へ更新する
-      allow update: if isMember(gidOf())
+      allow update: if (isPub() ? signedIn() : isMember(gidOf()))
         && matchesPost(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin()
-        || (signedIn() && (get(postDoc(gidOf(), pidOf())).data.uid == request.auth.uid || isOwner(gidOf())));
+        || (signedIn() && (get(srcDoc()).data.uid == request.auth.uid || (!isPub() && isOwner(gidOf()))));
     }
 
     // 意見ボックス：誰でも送れる（中身を読めるのは管理者だけ）
