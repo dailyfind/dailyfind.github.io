@@ -93,14 +93,15 @@ def music_links(p):
         ("LINE MUSIC", ("music.line.me",), f"https://music.line.me/webapp/search?query={q}"),
         ("YouTube Music", ("youtube.com", "youtu.be"), f"https://music.youtube.com/search?q={q}"),
     ]
-    return [(name, link if link and any(host == h or host.endswith("." + h) for h in hosts) else url) for name, hosts, url in apps]
+    found = p.get("_links") or {}   # GitHub で調べた曲のリンク（Apple Music / Spotify）
+    found = {"Apple Music": found.get("apple"), "Spotify": found.get("spotify")}
+    return [(name, link if link and any(host == h or host.endswith("." + h) for h in hosts) else (found.get(name) or url)) for name, hosts, url in apps]
 
 
 # ===== Apple Music の「曲そのもの」のリンクを調べる =====
 # iPhone からは Apple の検索の仕組みが使えない（Apple Music アプリへ飛ばされる）ため、
 # ここ（GitHub のサーバー）で「曲名＋アーティスト」から曲のリンクを調べて applelinks.json に書いておく。
 # サイトはこの表を見て、「聴く」ボタンを Apple Music の検索ではなく曲そのものに向ける。
-CACHE = ROOT / ".cache" / "applelinks.json"   # 前回調べた結果（GitHub Actions のキャッシュで次回に引き継ぐ）
 FIRESTORE = "https://firestore.googleapis.com/v1/projects/dailyfind-friends/databases/(default)/documents"
 API_KEY = "AIzaSyB-FxC1jCePfY8FNsXPHv72lKuQ-0OdO5E"   # サイトに書いてある公開用の鍵と同じ
 APPLE_TRACK = re.compile(r"^https://music\.apple\.com/[a-z]{2}/(album|song)/[^\s\"<>]+$")
@@ -163,34 +164,94 @@ def find_apple(title, by):
     return best["trackViewUrl"].split("&uo=")[0] if best else ""
 
 
-def resolve_apple_links(picks):
-    try:
-        cache = json.loads(CACHE.read_text(encoding="utf-8"))
-    except Exception:
-        cache = {}
+def collect_songs(picks):
+    """調べたい曲の一覧（記事の曲＋公開の投稿・みんなのプレイリストの曲）"""
     wanted = {}
     for p in picks:
-        if p.get("category") == "音楽" and not APPLE_TRACK.match(safe_link(p.get("link"))):
+        if p.get("category") == "音楽" and p.get("title"):
             wanted[song_key(p.get("title"), p.get("by"))] = (p.get("title"), p.get("by"))
     for title, by in public_songs():
         if title:
             wanted.setdefault(song_key(title, by), (title, by))
+    return wanted
+
+
+def resolve(name, wanted, finder, wait):
+    """finder で曲のリンクを調べる。結果は .cache/<name>.json に残して、次回は調べ直さない"""
+    path = ROOT / ".cache" / f"{name}.json"
+    try:
+        cache = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        cache = {}
     new = 0
     for key, (title, by) in wanted.items():
         if key in cache or new >= MAX_NEW:
             continue
         try:
-            cache[key] = find_apple(title, by)
+            cache[key] = finder(title, by)
             new += 1
-            time.sleep(3.2)
+            time.sleep(wait)
         except Exception as ex:
-            print(f"apple lookup failed: {title}: {ex}")
+            print(f"{name} lookup failed: {title}: {ex}")
             break
-    CACHE.parent.mkdir(exist_ok=True)
-    CACHE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
-    print(f"apple links: {sum(1 for v in cache.values() if v)} known, {new} looked up now")
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    print(f"{name}: {sum(1 for v in cache.values() if v)} known, {new} looked up now")
     return {k: v for k, v in cache.items() if v}
 
+
+# ===== Spotify の「曲そのもの」のリンクを調べる =====
+# Spotify の開発者用の鍵（GitHub の Secrets に SPOTIFY_CLIENT_ID と SPOTIFY_CLIENT_SECRET）があるときだけ動く。
+# 鍵はサイトには出さず、GitHub のサーバーの中でだけ使う。
+SPOTIFY_TRACK = re.compile(r"^https://open\.spotify\.com/track/[A-Za-z0-9]+$")
+_spotify_token = None
+
+
+def spotify_token():
+    global _spotify_token
+    if _spotify_token is None:
+        import base64
+        import os
+        cid, secret = os.environ.get("SPOTIFY_CLIENT_ID", ""), os.environ.get("SPOTIFY_CLIENT_SECRET", "")
+        if not cid or not secret:
+            _spotify_token = ""
+        else:
+            auth = base64.b64encode(f"{cid}:{secret}".encode()).decode()
+            req = urllib.request.Request("https://accounts.spotify.com/api/token", data=b"grant_type=client_credentials",
+                                         headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"})
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    _spotify_token = json.loads(r.read().decode("utf-8")).get("access_token", "")
+            except Exception as ex:
+                print(f"spotify token failed: {ex}")
+                _spotify_token = ""
+    return _spotify_token
+
+
+def find_spotify(title, by):
+    q = urllib.parse.urlencode({"q": f"{title} {by}".strip(), "type": "track", "market": "JP", "limit": "5"})
+    req = urllib.request.Request("https://api.spotify.com/v1/search?" + q, headers={"Authorization": f"Bearer {spotify_token()}"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        items = json.loads(r.read().decode("utf-8")).get("tracks", {}).get("items", [])
+    t = song_key(title, "")
+    def score(it):
+        name = song_key(it.get("name"), "")
+        extra = 1 if re.search(r"live|ライブ|version|remix|instrumental|karaoke", name) and not re.search(r"live|ライブ|version|remix", t) else 0
+        return (0 if name == t else 1 if name.startswith(t[:12]) else 2) * 2 + extra
+    best = min(items, key=score) if items else None
+    url = (best or {}).get("external_urls", {}).get("spotify", "")
+    return url if SPOTIFY_TRACK.match(url) else ""
+
+
+def resolve_links(picks):
+    """{曲のキー: {"apple": 曲のリンク, "spotify": 曲のリンク}} を返す"""
+    wanted = collect_songs(picks)
+    apple = resolve("applelinks", wanted, find_apple, 3.2)
+    spotify = resolve("spotifylinks", wanted, find_spotify, 0.3) if spotify_token() else {}
+    out = {}
+    for k in set(apple) | set(spotify):
+        out[k] = {s: v for s, v in (("apple", apple.get(k)), ("spotify", spotify.get(k))) if v}
+    return out, apple
 
 def stars(n):
     n = max(0, min(5, int(n or 0)))
@@ -305,9 +366,11 @@ def main():
                     ignore=lambda d, names: [n for n in names if n in SKIP] if Path(d) == ROOT else [])
 
     # Apple Music の曲のリンク：表を書き出し、記事の「検索リンク」も曲のリンクに置きかえる
-    apple = resolve_apple_links(picks)
-    (OUT / "applelinks.json").write_text(json.dumps(apple, ensure_ascii=False), encoding="utf-8")
+    links, apple = resolve_links(picks)
+    (OUT / "musiclinks.json").write_text(json.dumps(links, ensure_ascii=False), encoding="utf-8")
+    (OUT / "applelinks.json").write_text(json.dumps(apple, ensure_ascii=False), encoding="utf-8")   # 古い版の画面のため
     for p in picks:
+        p["_links"] = links.get(song_key(p.get("title"), p.get("by")), {})
         if p.get("category") == "音楽" and is_apple_search(p.get("link")):
             p["link"] = apple.get(song_key(p.get("title"), p.get("by")), p["link"])
     site_picks = json.loads((ROOT / "picks.json").read_text(encoding="utf-8"))

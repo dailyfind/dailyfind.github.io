@@ -142,18 +142,22 @@ async function hydrate() {
 }
 // Apple Music の「曲そのもの」のリンク。サイトを作るとき（GitHub）に調べた表 applelinks.json を使い、
 // 「聴く」ボタンが Apple Music の検索になっているものを、曲のページに置きかえる（iPhone では検索の仕組みが使えないため）
-let appleMap = null;
+// Spotify も同じ（GitHub に Spotify の鍵を登録してあるときだけ表に入る）。表は musiclinks.json：{ 曲のキー: { apple, spotify } }
+let linkMap = null;
 const songKey = s => String(s || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "");
-fetch("applelinks.json?h=" + Math.floor(Date.now() / 3600000), { cache: "no-store" })
-  .then(r => (r.ok ? r.json() : {})).catch(() => ({})).then(m => { appleMap = m && typeof m === "object" ? m : {}; upgradeLinks(); });
+fetch("musiclinks.json?h=" + Math.floor(Date.now() / 3600000), { cache: "no-store" })
+  .then(r => (r.ok ? r.json() : {})).catch(() => ({})).then(m => { linkMap = m && typeof m === "object" ? m : {}; upgradeLinks(); });
+const LINK_OK = { apple: /^https:\/\/music\.apple\.com\/[a-z]{2}\/(album|song)\//, spotify: /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/ };
 function upgradeLinks() {
-  if (!appleMap) return;
-  document.querySelectorAll('a[data-music-app="apple"]:not([data-up])').forEach(a => {
+  if (!linkMap) return;
+  document.querySelectorAll('a[data-music-app="apple"]:not([data-up]), a[data-music-app="spotify"]:not([data-up])').forEach(a => {
     a.dataset.up = "1";
-    let u; try { u = new URL(a.href); } catch { return; }
-    if (u.hostname !== "music.apple.com" || !u.pathname.endsWith("/search")) return;
-    const url = appleMap[songKey(u.searchParams.get("term"))];
-    if (typeof url === "string" && /^https:\/\/music\.apple\.com\/[a-z]{2}\/(album|song)\//.test(url)) a.href = url;
+    const app = a.dataset.musicApp;
+    let u, term = ""; try { u = new URL(a.href); } catch { return; }
+    if (app === "apple" && u.hostname === "music.apple.com" && u.pathname.endsWith("/search")) term = u.searchParams.get("term");
+    if (app === "spotify" && u.hostname === "open.spotify.com" && u.pathname.startsWith("/search/")) term = decodeURIComponent(u.pathname.slice(8));
+    const url = term && linkMap[songKey(term)] && linkMap[songKey(term)][app];
+    if (typeof url === "string" && LINK_OK[app].test(url)) a.href = url;
   });
 }
 let hyTimer = null;
@@ -840,7 +844,7 @@ async function fillHome() {
   const box = $("homeExtras"); if (!box) return;
   box.innerHTML = `
     <section class="hx">
-      <div class="section-head"><h3>Friends' Picks<small id="hxSub">友達のおすすめ</small></h3></div>
+      <div class="section-head"><h3><span id="hxTitle">Friends' Picks</span><small id="hxSub">友達のおすすめ</small></h3></div>
       <div class="hx-cards" id="hxCards">${LOADING}</div>
       <div class="hx-more" id="hxMore"></div>
     </section>`;
@@ -869,7 +873,7 @@ async function fillHome() {
   }
   if (gen !== homeGen || !$("hxCards")) return;   // 読み込み中に画面が変わった
   if (!sources) {
-    $("hxSub").textContent = "新着のおすすめ";
+    $("hxTitle").textContent = "New Picks"; $("hxSub").textContent = "みんなの新着のおすすめ";
     watch("pub", query(collection(db, "pubposts"), orderBy("createdAt", "desc"), limit(6)), { kind: "pub" });
   }
   $("hxMore").innerHTML = sources

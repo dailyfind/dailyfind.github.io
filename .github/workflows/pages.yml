@@ -29,6 +29,9 @@ jobs:
           restore-keys: applelinks-
       - name: Build
         run: python3 tools/build_site.py
+        env:   # Spotify の曲のリンクを調べるための鍵（GitHub の Settings → Secrets に登録。なければ Spotify は調べない）
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

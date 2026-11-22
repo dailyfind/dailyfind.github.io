@@ -47,7 +47,7 @@ function listenHtml(p, big) {
   if (big) return `${a(first, "more", `${esc(first.name)} で聴いてみる ↗`)}
     <div class="other-apps">ほかのアプリで聴く：${rest.map(l => a(l, "", esc(l.name))).join(" · ")}</div>`;
   return `<span class="listenbox">${a(first, "listen", `▶ 聴く`)}<details class="lmenu"><summary aria-label="ほかの音楽アプリで聴く">▾</summary>
-    <div class="lmenu-pop"><span class="lm-h">どのアプリで聴く？</span>${[first, ...rest].map(l => a(l, "", esc(l.name))).join("")}<span class="lm-f">選んだアプリが次から「聴く」になります。<br>Apple Music 以外は、曲名で検索した画面が開きます。</span></div></details></span>`;
+    <div class="lmenu-pop"><span class="lm-h">どのアプリで聴く？</span>${[first, ...rest].map(l => a(l, "", esc(l.name))).join("")}<span class="lm-f">選んだアプリが次から「聴く」になります。<br>曲のページが見つからないときは、曲名で検索した画面が開きます。</span></div></details></span>`;
 }
 // どれかのアプリで開いたら、そのアプリを覚える
 document.addEventListener("click", e => {
