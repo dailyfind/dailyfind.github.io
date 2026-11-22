@@ -1,0 +1,143 @@
+/* ===== DAILY FIND：グループ・みんなのプレイリスト・管理（メインページの中で使う） ===== */
+[hidden] { display: none !important; }
+
+/* 上のメニュー */
+.mainnav { display: flex; gap: 22px; overflow-x: auto; border-bottom: 1px solid var(--hair); margin-top: 2px; scrollbar-width: none; }
+.mainnav::-webkit-scrollbar { display: none; }
+.mainnav button { background: none; border: 0; padding: 12px 0 10px; font: inherit; font-size: 14px; letter-spacing: .06em; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.mainnav button.on { color: var(--ink); border-color: var(--ink); font-weight: 700; }
+.mainnav .badge { display: inline-block; min-width: 8px; height: 8px; border-radius: 99px; background: var(--accent); margin-left: 4px; vertical-align: 2px; }
+
+#fapp { padding: 22px 0 40px; }
+#fapp label, #fapp .lbl { display: grid; gap: 6px; font-size: 12px; letter-spacing: .08em; color: var(--muted); font-weight: 500; }
+#fapp input, #fapp select, #fapp textarea { font: inherit; font-size: 16px; color: var(--ink); background: var(--paper); border: 1px solid var(--hair); border-radius: 8px; padding: 11px 12px; width: 100%; letter-spacing: normal; }
+#fapp input:focus, #fapp select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+#fapp .check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; letter-spacing: normal; color: var(--ink); }
+#fapp .check input { width: auto; margin-top: 3px; }
+
+.panel { background: var(--card); border-radius: 12px; padding: 20px; display: grid; gap: 14px; max-width: 560px; }
+.panel h2 { margin: 0; font-size: 20px; }
+.panel p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.btn { font: inherit; font-size: 15px; font-weight: 700; letter-spacing: .04em; padding: 12px 24px; border-radius: 99px; cursor: pointer; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); text-decoration: none; display: inline-block; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--hair); }
+.btn.small { padding: 6px 14px; font-size: 12px; font-weight: 500; }
+.btn.armed { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:disabled { opacity: .5; cursor: default; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.msg { font-size: 13px; } .msg.ok { color: #2f7a45; } .msg.err { color: var(--accent); }
+.note { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.invite { display: flex; gap: 8px; } #fapp .invite input { font-size: 13px; }
+
+/* アイコン */
+.av { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: 16px; line-height: 1; flex: none; color: #fff; }
+.picker { display: grid; gap: 10px; }
+.emojis, .colors { display: flex; flex-wrap: wrap; gap: 6px; }
+.emojis button { font-size: 22px; width: 42px; height: 42px; border-radius: 10px; border: 1px solid var(--hair); background: var(--paper); cursor: pointer; }
+.colors button { width: 30px; height: 30px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+.emojis button.on { border: 2px solid var(--ink); } .colors button.on { border-color: var(--ink); }
+
+/* グループ */
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.bar h2 { margin: 0; font-family: var(--serif); font-size: 24px; }
+.bar select { width: auto !important; font-size: 13px !important; padding: 5px 10px !important; border-radius: 99px !important; max-width: 200px; }
+.members { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; background: var(--card); border-radius: 99px; padding: 3px 10px 3px 3px; color: var(--muted); }
+.chip .av { width: 22px; height: 22px; font-size: 12px; }
+.tabs2 { display: flex; gap: 18px; border-bottom: 1px solid var(--hair); margin-bottom: 18px; }
+.tabs2 button { background: none; border: 0; padding: 8px 0; font: inherit; font-size: 14px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs2 button.on { color: var(--ink); border-color: var(--ink); font-weight: 700; }
+
+/* 投稿フォーム */
+.compose { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 24px; display: grid; gap: 12px; }
+.rate { display: flex; gap: 4px; }
+.rate button { background: none; border: 0; font-size: 30px; line-height: 1; cursor: pointer; color: var(--hair); padding: 2px 3px; touch-action: manipulation; }
+.rate button.on { color: var(--star); }
+.picked { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
+.picked .cover { aspect-ratio: 1; border-radius: 4px; }
+.picked .cover-en { font-size: 12px; } .picked .cover-ja { display: none; }
+.suggest { background: var(--paper); border: 1px solid var(--ink); border-radius: 8px; max-height: 360px; overflow-y: auto; }
+.s-item { display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--hair); }
+.s-item:hover { background: var(--card); }
+.s-item img, .s-item .cover { width: 48px; height: 48px; object-fit: cover; border-radius: 3px; }
+.s-item .cover-en { font-size: 10px; } .s-item .cover-ja { display: none; }
+.s-t { font-weight: 700; font-size: 15px; line-height: 1.4; } .s-a { font-size: 12px; color: var(--muted); }
+.s-msg { padding: 12px; font-size: 13px; color: var(--muted); }
+
+/* 投稿 */
+.post { display: grid; grid-template-columns: 92px 1fr; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--hair); }
+.post .cover { aspect-ratio: 1; border-radius: 4px; }
+.post .cover-en { font-size: 15px; } .post .cover-ja { display: none; }
+.post .who { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.post .who b { color: var(--ink); font-weight: 700; }
+.post .kick { font-size: 11px; letter-spacing: .18em; color: var(--accent); font-weight: 700; margin-top: 6px; }
+.post h3 { margin: 2px 0 0; font-size: 18px; line-height: 1.4; }
+.post .by { color: var(--muted); font-size: 13px; }
+.post .stars { font-size: 13px; display: block; margin: 4px 0; }
+.post p { margin: 6px 0 0; }
+.ops { display: flex; gap: 12px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.ops .txt { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--muted); text-decoration: underline; cursor: pointer; }
+.ops .txt.armed { color: var(--accent); font-weight: 700; }
+.listen { font-size: 12px; font-weight: 700; text-decoration: none; border: 1px solid var(--hair); border-radius: 99px; padding: 3px 12px; white-space: nowrap; }
+.like { display: inline-flex; align-items: center; gap: 5px; background: none; border: 1px solid var(--hair); border-radius: 99px; padding: 3px 12px; font: inherit; font-size: 13px; cursor: pointer; color: var(--ink); touch-action: manipulation; }
+.like .h { color: var(--hair); font-size: 15px; }
+.like.on { border-color: var(--accent); } .like.on .h { color: var(--accent); }
+.likers, .pub { font-size: 12px; color: var(--muted); width: 100%; }
+
+/* プレイリスト（グループ・みんな） */
+.flist .tr { display: grid; grid-template-columns: 26px 52px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.flist .no { font-family: var(--display); font-weight: 700; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.flist .cover { aspect-ratio: 1; border-radius: 3px; }
+.flist .cover-en { font-size: 10px; } .flist .cover-ja { display: none; }
+.flist .ft { min-width: 0; }
+.flist .ft b { display: block; font-size: 15px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flist .ft small { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flist .end { display: flex; gap: 8px; align-items: center; }
+.flist .cnt { font-size: 12px; color: var(--accent); white-space: nowrap; }
+.pl-top { display: flex; justify-content: space-between; align-items: end; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.pl-top h2 { margin: 0; font-family: var(--display); font-weight: 800; letter-spacing: -.02em; font-size: 26px; }
+.pl-top p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.seg { display: flex; gap: 6px; }
+
+details.manage { margin-top: 40px; font-size: 14px; }
+details.manage summary { cursor: pointer; color: var(--muted); }
+details.manage .panel { margin-top: 12px; }
+.mrow { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--hair); gap: 8px; }
+.mrow span { display: flex; gap: 8px; align-items: center; }
+
+/* トップページに出す「グループの新着」「みんなのプレイリスト」 */
+.hx { margin-bottom: 56px; }
+.hx-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.hx-card { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding: 12px; background: var(--card); border-radius: 12px; text-decoration: none; align-items: start; }
+.hx-card .cover { aspect-ratio: 1; border-radius: 4px; }
+.hx-card .cover-en { font-size: 11px; } .hx-card .cover-ja { display: none; }
+.hx-card .who { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.hx-card .who .av { width: 20px; height: 20px; font-size: 11px; }
+.hx-card b { display: block; font-size: 15px; line-height: 1.4; margin-top: 2px; }
+.hx-card small { display: block; color: var(--muted); font-size: 12px; }
+.hx-card p { margin: 4px 0 0; font-size: 13px; line-height: 1.6; }
+.hx-cta { background: var(--card); border-radius: 12px; padding: 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hx-cta p { margin: 0; font-size: 14px; color: var(--muted); }
+.hx-more { margin-top: 12px; }
+.hx-more a { font-size: 13px; color: var(--accent); text-decoration: none; font-weight: 700; }
+
+/* 管理 */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.stat { background: var(--card); border-radius: 12px; padding: 16px; }
+.stat b { display: block; font-family: var(--display); font-weight: 800; font-size: 32px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); letter-spacing: .08em; }
+.adm h3 { font-family: var(--display); font-weight: 800; letter-spacing: -.02em; font-size: 22px; margin: 28px 0 6px; }
+.adm details { border-bottom: 1px solid var(--hair); padding: 10px 0; }
+.adm summary { cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; list-style: none; }
+.adm summary::-webkit-details-marker { display: none; }
+.adm summary b { font-size: 16px; } .adm summary small { color: var(--muted); font-size: 12px; margin-left: 8px; }
+.adm .inner { padding: 10px 0 4px 12px; display: grid; gap: 10px; }
+.adm .arow { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--hair); }
+.adm .arow .cover { aspect-ratio: 1; border-radius: 3px; } .adm .arow .cover-en { font-size: 9px; } .adm .arow .cover-ja { display: none; }
+.adm .arow b { display: block; font-size: 14px; } .adm .arow small { color: var(--muted); font-size: 12px; }
+
+@media (max-width: 560px) {
+  .row2 { grid-template-columns: 1fr; }
+  .post { grid-template-columns: 70px 1fr; gap: 12px; }
+  .flist .tr { grid-template-columns: 22px 44px 1fr auto; gap: 10px; }
+}
