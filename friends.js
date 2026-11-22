@@ -4,7 +4,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { initializeAuth, getAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver,
          signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, orderBy, limit, where, documentId,
+import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, orderBy, limit, where, documentId,
          onSnapshot, serverTimestamp, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const CONFIG = {
@@ -44,6 +44,14 @@ function bindPicker(id, cur) {
     $(id).querySelectorAll("[data-e]").forEach(x => x.classList.toggle("on", x.dataset.e === cur.icon));
     $(id).querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x.dataset.c === cur.color));
   };
+}
+// 画面の下に少しだけ出るお知らせ
+let toastTimer = null;
+function toast(text) {
+  let t = document.querySelector(".toast");
+  if (!t) { t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status"); document.body.append(t); }
+  t.textContent = text; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
 }
 const setMsg = (id, t, ok) => { const el = $(id); if (el) { el.textContent = t; el.className = "msg " + (ok ? "ok" : "err"); } };
 const fmtTime = ts => { if (!ts || !ts.toDate) return ""; const d = ts.toDate();
@@ -103,6 +111,7 @@ async function show(view) {
   }
   if (view === "all") return publicView();
   if (view === "admin") return adminView();
+  if (view === "feedback") return feedbackView();
   return groupView();
 }
 
@@ -216,6 +225,7 @@ function groupScreen() {
     <section class="compose" id="compose" hidden></section>
     <div class="tabs2"><button data-t="feed">タイムライン</button><button data-t="pl">グループのプレイリスト</button></div>
     <div id="gbody"><p class="empty">読み込んでいます…</p></div>
+    <button class="fab" id="fab" aria-label="投稿する">＋</button>
     <details class="manage">
       <summary>設定（ニックネーム・アイコン・グループを抜ける${isOwner ? "・メンバー管理" : ""}）</summary>
       <div class="panel">
@@ -234,8 +244,9 @@ function groupScreen() {
   bindPicker("ePick", prof); bindGroupSelect();
   root.querySelectorAll(".tabs2 button").forEach(b => { b.classList.toggle("on", b.dataset.t === tab); b.onclick = () => { tab = b.dataset.t; root.querySelectorAll(".tabs2 button").forEach(x => x.classList.toggle("on", x === b)); drawGroupBody(); }; });
   $("inviteBtn").onclick = () => { $("invitePanel").hidden = !$("invitePanel").hidden; };
-  $("copyInv").onclick = async () => { try { await navigator.clipboard.writeText($("invUrl").value); setMsg("invMsg", "コピーしました", true); } catch { $("invUrl").select(); setMsg("invMsg", "選択しました。長押しでコピーしてください", true); } };
+  $("copyInv").onclick = async () => { try { await navigator.clipboard.writeText($("invUrl").value); toast("招待リンクをコピーしました"); } catch { $("invUrl").select(); setMsg("invMsg", "選択しました。長押しでコピーしてください", true); } };
   $("newBtn").onclick = () => openCompose(null);
+  $("fab").onclick = () => openCompose(null);
   $("nickSave").onclick = async () => {
     const n = $("nickEdit").value.trim(); if (!n) return;
     try { await updateDoc(doc(db, "groups", current.gid, "members", me), { nickname: n, icon: prof.icon, color: prof.color }); Object.assign(current, { nickname: n, icon: prof.icon, color: prof.color }); setMsg("nickMsg", "変更しました（これからの投稿に使われます）", true); }
@@ -376,6 +387,7 @@ function openCompose(post) {
   $("rate").onclick = e => { const b = e.target.closest("button[data-n]"); if (b) { draft.rating = +b.dataset.n; drawRate(); } };
   $("fTitle").oninput = drawPv; $("fCat").onchange = drawPv;
   drawRate(); drawPv(); c.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!post) setTimeout(() => $("mq") && $("mq").focus({ preventScroll: true }), 350);   // すぐ曲名を打てるように
 
   let seq = 0, timer = null, results = [];
   const sug = $("suggest");
@@ -437,6 +449,8 @@ function openCompose(post) {
       }
       await batch.commit();
       c.hidden = true; c.innerHTML = ""; tab = "feed";
+      toast(post ? "更新しました" : "シェアしました！");
+      document.querySelector(".tabs2")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) { console.error(e); setMsg("pMsg", "シェアできませんでした。少し待ってからもう一度押してください。", false); $("post").disabled = false; }
   };
 }
@@ -468,8 +482,18 @@ function publicView() {
 
 // ===== トップページ：グループの新着＋みんなのプレイリスト =====
 let homeUnsubs = [];
+const newsHtml = n => `
+  <div class="news-item"><div class="nk">お知らせ<span>${esc(fmtTime(n.createdAt))}</span></div>
+    <b>${esc(n.title)}</b>${n.body ? `<p>${esc(n.body)}</p>` : ""}${safeLink(n.link) ? `<a href="${esc(safeLink(n.link))}" target="_blank" rel="noopener noreferrer">くわしく見る ↗</a>` : ""}</div>`;
+
 async function fillHome() {
   homeUnsubs.forEach(u => u()); homeUnsubs = [];
+  // 管理者からのお知らせ（新しい3件）
+  homeUnsubs.push(onSnapshot(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(3)), snap => {
+    const nb = $("homeNews"); if (!nb) return;
+    const list = []; snap.forEach(d => list.push(d.data()));
+    nb.innerHTML = list.length ? `<section class="news">${list.map(newsHtml).join("")}</section>` : "";
+  }, () => {}));
   const box = $("homeExtras"); if (!box) return;
   box.innerHTML = `
     <section class="hx" id="hxGroup"></section>
@@ -508,12 +532,47 @@ async function fillHome() {
 }
 window.addEventListener("df:leavehome", () => { homeUnsubs.forEach(u => u()); homeUnsubs = []; });
 
+// ===== 意見ボックス（誰でも送れる。読めるのは管理者だけ） =====
+function feedbackView() {
+  const st = { kind: "要望" };
+  const nick = (current && current.nickname) || "";
+  root.innerHTML = `
+    <div class="panel">
+      <h2>💬 意見ボックス</h2>
+      <p>「こうなったらいいな」「ここが使いにくい」「動かない」など、なんでも送ってください。読むのは<b>サイトの管理者だけ</b>です。</p>
+      <div class="lbl">どんな内容？<div class="fb-kinds" id="fbKinds">${["要望", "不具合", "感想", "その他"].map(k => `<button type="button" data-k="${k}" class="${k === st.kind ? "on" : ""}">${k}</button>`).join("")}</div></div>
+      <label>内容<textarea id="fbText" maxlength="1000" placeholder="例：プレイリストを並べ替えたい"></textarea></label>
+      <label>ニックネーム（なくてもOK）<input id="fbNick" maxlength="20" value="${esc(nick)}" placeholder="名前を書かなくても送れます"></label>
+      <div class="actions"><button class="btn" id="fbSend">送る</button><span class="msg" id="fbMsg"></span></div>
+      <p class="note">メールアドレスなどの個人情報は書かないでください。返事が必要なときは、管理者からのお知らせでお答えすることがあります。</p>
+    </div>`;
+  $("fbKinds").onclick = e => { const b = e.target.closest("[data-k]"); if (!b) return; st.kind = b.dataset.k; $("fbKinds").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); };
+  $("fbSend").onclick = async () => {
+    const text = $("fbText").value.trim();
+    if (!text) return setMsg("fbMsg", "内容を書いてください。", false);
+    $("fbSend").disabled = true; setMsg("fbMsg", "送っています…", true);
+    try {
+      await ensureAuth();
+      await addDoc(collection(db, "feedback"), { uid: me, kind: st.kind, text, nickname: $("fbNick").value.trim(), done: false, createdAt: serverTimestamp() });
+      root.innerHTML = `<div class="panel"><h2>ありがとうございます！</h2><p>意見を送りました。管理者が読んで、これからの改良に使います。</p>
+        <div class="actions"><a class="btn" href="#">トップへ戻る</a><button class="btn ghost" id="fbMore">もう1つ送る</button></div></div>`;
+      $("fbMore").onclick = feedbackView;
+      toast("送りました");
+    } catch (e) { console.error(e); setMsg("fbMsg", "送れませんでした。少し待ってからもう一度押してください。", false); $("fbSend").disabled = false; }
+  };
+}
+
 // ===== 管理（サイトの持ち主だけ） =====
-let adminUser = null, isAdmin = false;
+let adminUser = null, isAdmin = false, badgeUnsub = null;
 onAuthStateChanged(adminAuth, async user => {
   adminUser = user; isAdmin = false;
   if (user) { try { isAdmin = (await getDoc(doc(adb, "admins", user.uid))).exists(); } catch {} }
   window.DF && window.DF.setAdmin(isAdmin);
+  // 未対応の意見があればメニューの「管理」に赤い点を出す
+  if (badgeUnsub) { badgeUnsub(); badgeUnsub = null; }
+  if (isAdmin) badgeUnsub = onSnapshot(query(collection(adb, "feedback"), where("done", "==", false), limit(50)),
+    snap => window.DF && window.DF.setBadge(snap.size), () => {});
+  else window.DF && window.DF.setBadge(0);
   if (location.hash === "#admin") adminView();
 });
 
@@ -541,11 +600,59 @@ function adminView() {
         <div class="stat"><b id="sLikes">–</b><span>公開曲のいいね合計</span></div>
       </section>
       <p class="note">すべてのグループのメンバーと投稿を見て、投稿の削除・メンバーを外す・グループを閉じることができます。他の人になりすまして投稿したり、投稿を書き換えたりはできません。</p>
+
+      <h3>💬 意見ボックス</h3>
+      <div class="seg" style="margin-bottom:6px"><button class="btn small" data-fb="open">未対応</button><button class="btn small ghost" data-fb="all">すべて</button></div>
+      <div id="aFeedback"><p class="empty">読み込んでいます…</p></div>
+
+      <h3>📣 お知らせを書く</h3>
+      <div class="panel" style="max-width:none">
+        <p>トップページの一番上に、みんなに向けたお知らせを出せます（新しい3件まで表示）。</p>
+        <label>タイトル<input id="nTitle" maxlength="60" placeholder="例：グループ機能ができました"></label>
+        <label>本文（なくてもOK）<textarea id="nBody" maxlength="1000" placeholder="くわしい説明"></textarea></label>
+        <label>リンク（なくてもOK）<input id="nLink" type="url" maxlength="500" placeholder="https://"></label>
+        <div class="actions"><button class="btn" id="nPost">お知らせを出す</button><span class="msg" id="nMsg"></span></div>
+      </div>
+      <div id="aNews"></div>
+
       <h3>グループ</h3><div id="aGroups"><p class="empty">読み込んでいます…</p></div>
       <h3>みんなのプレイリスト</h3><div class="flist" id="aSongs"><p class="empty">読み込んでいます…</p></div>
     </div>`;
   $("aOut").onclick = () => signOut(adminAuth);
   const fmt = ts => ts && ts.toDate ? ts.toDate().toLocaleString("ja-JP", { dateStyle: "short", timeStyle: "short" }) : "";
+
+  // 意見ボックス
+  let fbFilter = "open", fbList = [];
+  const drawFb = () => {
+    const list = fbFilter === "open" ? fbList.filter(f => !f.done) : fbList;
+    $("aFeedback").innerHTML = list.length ? list.map(f => `
+      <div class="fb-row ${f.done ? "done" : ""}">
+        <div class="fb-meta"><span class="fb-kind">${esc(f.kind)}</span>${esc(f.nickname || "名前なし")} · ${esc(fmt(f.createdAt))}</div>
+        <p>${esc(f.text)}</p>
+        <div class="actions"><button class="btn small ghost" data-fdone="${esc(f.id)}">${f.done ? "未対応に戻す" : "✓ 対応済みにする"}</button><button class="btn small ghost" data-fdel="${esc(f.id)}">消す</button></div>
+      </div>`).join("") : `<p class="empty">${fbFilter === "open" ? "未対応の意見はありません。" : "まだ意見はありません。"}</p>`;
+    $("aFeedback").querySelectorAll("[data-fdone]").forEach(b => b.onclick = () => { const f = fbList.find(x => x.id === b.dataset.fdone); updateDoc(doc(adb, "feedback", f.id), { done: !f.done }).catch(console.error); });
+    $("aFeedback").querySelectorAll("[data-fdel]").forEach(b => b.onclick = () => armed(b, "消す", () => deleteDoc(doc(adb, "feedback", b.dataset.fdel))));
+  };
+  root.querySelectorAll("[data-fb]").forEach(b => b.onclick = () => { fbFilter = b.dataset.fb; root.querySelectorAll("[data-fb]").forEach(x => x.classList.toggle("ghost", x !== b)); drawFb(); });
+  adminUnsubs.push(onSnapshot(query(collection(adb, "feedback"), orderBy("createdAt", "desc"), limit(200)), snap => {
+    fbList = []; snap.forEach(d => fbList.push({ id: d.id, ...d.data() })); drawFb();
+  }, e => { console.error(e); $("aFeedback").innerHTML = `<p class="empty">読み込めませんでした。</p>`; }));
+
+  // お知らせ
+  $("nPost").onclick = async () => {
+    const title = $("nTitle").value.trim(), body = $("nBody").value.trim(), link = $("nLink").value.trim();
+    if (!title) return setMsg("nMsg", "タイトルを入れてください。", false);
+    if (link && !/^https:\/\//i.test(link)) return setMsg("nMsg", "リンクは https:// から始まるアドレスにしてください。", false);
+    $("nPost").disabled = true;
+    try { await addDoc(collection(adb, "announcements"), { title, body, link, createdAt: serverTimestamp() }); $("nTitle").value = ""; $("nBody").value = ""; $("nLink").value = ""; toast("お知らせを出しました"); setMsg("nMsg", "", true); }
+    catch (e) { console.error(e); setMsg("nMsg", "出せませんでした。", false); }
+    $("nPost").disabled = false;
+  };
+  adminUnsubs.push(onSnapshot(query(collection(adb, "announcements"), orderBy("createdAt", "desc"), limit(50)), snap => {
+    $("aNews").innerHTML = snap.size ? `<div class="news">${snap.docs.map(d => newsHtml(d.data()).replace('</div>\n', `</div>`) + `<div class="actions" style="margin:-4px 0 8px"><button class="btn small ghost" data-ndel="${esc(d.id)}">このお知らせを消す</button></div>`).join("")}</div>` : `<p class="empty">まだお知らせはありません。</p>`;
+    $("aNews").querySelectorAll("[data-ndel]").forEach(b => b.onclick = () => armed(b, "このお知らせを消す", () => deleteDoc(doc(adb, "announcements", b.dataset.ndel))));
+  }, e => console.error(e)));
 
   adminUnsubs.push(onSnapshot(query(collection(adb, "groups"), orderBy("createdAt", "desc")), snap => {
     $("sGroups").textContent = snap.size;

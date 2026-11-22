@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#111111">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122c">
-<link rel="stylesheet" href="friends.css?v=20261122c">
+<link rel="stylesheet" href="style.css?v=20261122d">
+<link rel="stylesheet" href="friends.css?v=20261122d">
 </head>
 <body>
 <div class="wrap">
@@ -33,8 +33,19 @@
     <button data-go="">おすすめ</button>
     <button data-go="group">グループ</button>
     <button data-go="all">みんなのプレイリスト</button>
-    <button data-go="admin" id="navAdmin" hidden>管理</button>
+    <button data-go="admin" id="navAdmin" hidden>管理<span class="badge" id="navBadge" hidden></span></button>
+    <button type="button" class="navhelp" id="introOpen" aria-label="DAILY FIND の使い方">？使い方</button>
   </nav>
+
+  <!-- はじめて開いた人向けの説明（4ステップ） -->
+  <div class="intro" id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="introTitle">
+    <div class="intro-card">
+      <button type="button" class="intro-skip" id="introSkip">スキップ</button>
+      <div class="intro-slides" id="introSlides"></div>
+      <div class="intro-dots" id="introDots"></div>
+      <div class="intro-actions"><button type="button" class="btn ghost" id="introBack">戻る</button><button type="button" class="btn" id="introNext">次へ</button></div>
+    </div>
+  </div>
 
   <!-- ホーム画面に追加する方法（スマホで、まだ追加していないときだけ上に出る） -->
   <div class="a2hs" id="a2hs" hidden>
@@ -48,10 +59,10 @@
   <main id="app"></main>
   <section id="fapp" hidden></section>
 
-  <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a>　<span id="total"></span>　<a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
+  <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="introLink" style="text-decoration:none">❓ DAILY FIND とは</a><a href="#feedback" style="text-decoration:none">💬 意見を送る</a><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a><span id="total"></span><a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
 </div>
 
-<script src="common.js?v=20261122c"></script>
+<script src="common.js?v=20261122d"></script>
 <script>
   let picks = [];
   let filter = "ALL";
@@ -204,7 +215,7 @@
     const [latest, ...past] = picks;
     const cats = ["ALL", ...new Set(picks.map(p => p.category))];
     const lists = playlists();
-    app.innerHTML = `<div class="section-head" style="border-top:0;padding-top:24px;margin-bottom:0"><h3>Today's Pick<small>管理者のおすすめ</small></h3></div>`
+    app.innerHTML = `<div id="homeNews"></div><div class="section-head" style="border-top:0;padding-top:24px;margin-bottom:0"><h3>Today's Pick<small>管理者のおすすめ</small></h3></div>`
       + feature(latest) + `<div id="homeExtras"></div>` + (lists.length ? `
       <section class="pl-section">
         <div class="section-head">
@@ -254,7 +265,7 @@
   })();
 
   // ===== 画面の切り替え（おすすめ / グループ / みんなのプレイリスト / 管理） =====
-  const FRIENDS_VIEW = h => /^(g=|group$|all$|admin$)/.test(h);
+  const FRIENDS_VIEW = h => /^(g=|group$|all$|admin$|feedback$)/.test(h);
   const navOf = h => h.startsWith("g=") ? "group" : (FRIENDS_VIEW(h) ? h : "");
   let adminOn = false;
   function setNav(v) {
@@ -290,6 +301,36 @@
     else location.hash = target;
     window.scrollTo(0, 0);
   });
+  // ===== はじめての人への説明 =====
+  (() => {
+    const slides = [
+      { icon: "👋", title: "DAILY FIND へようこそ", text: "<b>毎日ひとつ、いいもの</b>を見つける場所です。管理者が毎日、音楽・本・映画・お店などのおすすめを1つ紹介します。トップの「Today's Pick」が今日のおすすめです。" },
+      { icon: "👥", title: "友達とグループでシェア", text: "「グループ」からグループを作って、招待リンクを LINE で送るだけ。友達は<b>ニックネームだけで参加</b>できます。メールアドレスもパスワードも要りません。<br>グループの投稿や「ひとこと」は、<b>メンバーだけ</b>に見えます。" },
+      { icon: "🎵", title: "みんなのプレイリスト", text: "グループでシェアされた曲は、<b>曲名とジャケットだけ</b>「みんなのプレイリスト」に並びます（誰が投稿したかは出ません）。<br>Apple Music・Spotify・LINE MUSIC・YouTube Music の好きなアプリで聴けます。" },
+      { icon: "📱", title: "ホーム画面に追加しよう", text: "ホーム画面に追加すると、アプリみたいにすぐ開けます。やり方は、ページの上の案内か、いちばん下の「📱 ホーム画面に追加する方法」で見られます。<br>気づいたことは「<b>💬 意見を送る</b>」からいつでもどうぞ。" },
+    ];
+    let i = 0;
+    const el = document.getElementById("intro");
+    const draw = () => {
+      const s = slides[i];
+      document.getElementById("introSlides").innerHTML = `<div class="intro-icon">${s.icon}</div><h2 id="introTitle">${s.title}</h2><p>${s.text}</p>`;
+      document.getElementById("introDots").innerHTML = slides.map((_, k) => `<span class="${k === i ? "on" : ""}"></span>`).join("");
+      document.getElementById("introBack").style.visibility = i ? "visible" : "hidden";
+      document.getElementById("introNext").textContent = i === slides.length - 1 ? "はじめる" : "次へ";
+    };
+    const open = () => { i = 0; draw(); el.hidden = false; document.getElementById("introNext").focus(); };
+    const close = () => { el.hidden = true; try { localStorage.setItem("df_intro_seen", "1"); } catch {} };
+    document.getElementById("introNext").onclick = () => { if (i < slides.length - 1) { i++; draw(); } else close(); };
+    document.getElementById("introBack").onclick = () => { if (i > 0) { i--; draw(); } };
+    document.getElementById("introSkip").onclick = close;
+    el.addEventListener("click", e => { if (e.target === el) close(); });
+    document.addEventListener("keydown", e => { if (!el.hidden && e.key === "Escape") close(); });
+    document.getElementById("introOpen").onclick = open;
+    document.getElementById("introLink").onclick = e => { e.preventDefault(); open(); };
+    let seen = false; try { seen = localStorage.getItem("df_intro_seen") === "1"; } catch {}
+    if (!seen) open();
+  })();
+
   // ===== ホーム画面に追加する方法 =====
   (() => {
     const ua = navigator.userAgent;
@@ -323,9 +364,10 @@
   window.DF = {
     setNav,
     setAdmin: on => { adminOn = on; setNav(navOf(location.hash.slice(1))); },
+    setBadge: n => { const b = document.getElementById("navBadge"); b.hidden = !n; },
     friendsReady: () => { if (FRIENDS_VIEW(location.hash.slice(1))) route(); else if (picks.length && document.getElementById("homeExtras")) window.dispatchEvent(new Event("df:home")); },
   };
 </script>
-<script type="module" src="friends.js?v=20261122c"></script>
+<script type="module" src="friends.js?v=20261122d"></script>
 </body>
 </html>

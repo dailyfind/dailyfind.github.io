@@ -133,5 +133,32 @@ service cloud.firestore {
       allow delete: if isAdmin()
         || (signedIn() && (get(postDoc(gidOf(), pidOf())).data.uid == request.auth.uid || isOwner(gidOf())));
     }
+
+    // 意見ボックス：誰でも送れる（中身を読めるのは管理者だけ）
+    match /feedback/{fid} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'kind', 'text', 'nickname', 'createdAt', 'done'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.kind in ['要望', '不具合', '感想', 'その他']
+        && str(request.resource.data.text, 1, 1000)
+        && str(request.resource.data.nickname, 0, 20)
+        && request.resource.data.done == false
+        && request.resource.data.createdAt == request.time;
+      allow read, delete: if isAdmin();
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done'])
+        && request.resource.data.done is bool;
+    }
+
+    // 管理者からのお知らせ：誰でも見られる（書けるのは管理者だけ）
+    match /announcements/{aid} {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['title', 'body', 'link', 'createdAt'])
+        && str(request.resource.data.title, 1, 60)
+        && str(request.resource.data.body, 0, 1000)
+        && httpsOrEmpty(request.resource.data.link)
+        && request.resource.data.createdAt is timestamp;
+      allow delete: if isAdmin();
+    }
   }
 }
