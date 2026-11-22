@@ -131,7 +131,7 @@
       </div>
       <div class="ac">
         <label><span>タイトル（作品名・お店の名前） <span class="req">*</span></span><input name="title" required placeholder="例：〇〇〇〇" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="suggest" aria-expanded="false"></label>
-        <div class="hint" id="hint" hidden>♪ 曲名を入れると Apple Music から候補が出ます。選ぶとアーティスト・ジャケット・リンクが自動で入ります。</div>
+        <div class="hint" id="hint" hidden>♪ 曲名を入れると候補が出ます。選ぶとアーティスト・ジャケット・Apple Music のリンクが自動で入ります。</div>
         <div class="suggest" id="suggest" role="listbox" hidden></div>
       </div>
       <label>作者・アーティスト・場所など<input name="by" placeholder="例：〇〇 著 / 東京・下北沢"></label>
@@ -351,21 +351,46 @@
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); readImage(e.dataTransfer.files[0]); };
   $("clearImg").onclick = () => { imageData = null; imageUrl = ""; removeImage = true; $("file").value = ""; drawPreview(); };
 
-  // ===== Apple Music 検索（JSONP） =====
-  function itunes(term) {
+  // ===== 曲の検索（JSONP） =====
+  // iPhone では Apple の検索APIが Apple Music アプリへ飛ばされて使えないため、
+  // まず Apple Music を試し、だめなら Deezer の曲データ（ジャケット付き）を使う。
+  function jsonp(url, ms) {
     return new Promise((resolve, reject) => {
-      const cb = "df_itunes_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
+      const cb = "df_cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
       const s = document.createElement("script");
-      const timer = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, 8000);
+      const timer = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, ms);
       function cleanup() { clearTimeout(timer); delete window[cb]; s.remove(); }
-      window[cb] = data => { cleanup(); resolve((data.results || []).map(t => ({
-        title: t.trackName || "", artist: t.artistName || "", album: t.collectionName || "", year: (t.releaseDate || "").slice(0, 4),
-        thumb: t.artworkUrl100 || "", artwork: (t.artworkUrl100 || "").replace("100x100bb", "1000x1000bb"), url: t.trackViewUrl || "",
-      }))); };
+      window[cb] = data => { cleanup(); resolve(data); };
       s.onerror = () => { cleanup(); reject(new Error("network")); };
-      s.src = "https://itunes.apple.com/search?" + new URLSearchParams({ term, country: "JP", media: "music", entity: "song", limit: 12, lang: "ja_jp", callback: cb });
+      s.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
       document.head.append(s);
     });
+  }
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const appleSearchUrl = (title, artist) => "https://music.apple.com/jp/search?term=" + encodeURIComponent(`${title} ${artist}`.trim());
+
+  async function searchApple(term) {
+    const data = await jsonp("https://itunes.apple.com/search?" + new URLSearchParams({ term, country: "JP", media: "music", entity: "song", limit: 12, lang: "ja_jp" }), 5000);
+    return (data.results || []).map(t => ({
+      title: t.trackName || "", artist: t.artistName || "", album: t.collectionName || "", year: (t.releaseDate || "").slice(0, 4),
+      thumb: t.artworkUrl100 || "", artwork: (t.artworkUrl100 || "").replace("100x100bb", "1000x1000bb"), url: t.trackViewUrl || "",
+    }));
+  }
+  async function searchDeezer(term) {
+    const data = await jsonp("https://api.deezer.com/search?" + new URLSearchParams({ q: term, limit: 12, output: "jsonp" }), 8000);
+    return (data.data || []).map(t => ({
+      title: t.title || "", artist: t.artist?.name || "", album: t.album?.title || "", year: "",
+      thumb: t.album?.cover_medium || "", artwork: t.album?.cover_xl || "",
+      url: appleSearchUrl(t.title || "", t.artist?.name || ""),   // Apple Music で曲を探すリンク
+    }));
+  }
+  let source = "Apple Music";
+  async function itunes(term) {
+    if (!isIOS) {
+      try { source = "Apple Music"; return await searchApple(term); } catch {}
+    }
+    source = "Deezer";
+    return searchDeezer(term);
   }
   const titleInput = F.title, sug = $("suggest");
   let results = [], active = -1, searchTimer = null, searchSeq = 0;
@@ -377,7 +402,7 @@
       <div class="s-item ${i === active ? "active" : ""}" role="option" data-i="${i}" aria-selected="${i === active}">
         <img src="${esc(r.thumb)}" alt="">
         <div><div class="s-t">${esc(r.title)}</div><div class="s-a">${esc(r.artist)}${r.album ? " · " + esc(r.album) : ""}${r.year ? " · " + esc(r.year) : ""}</div></div>
-      </div>`).join("") + `<div class="s-foot">Apple Music の検索結果</div>`);
+      </div>`).join("") + `<div class="s-foot">${source === "Apple Music" ? "Apple Music の検索結果" : "曲データ：Deezer（リンクは Apple Music で開きます）"}</div>`);
     sug.querySelectorAll(".s-item").forEach(el => {
       el.onmousedown = e => e.preventDefault();       // 入力欄のフォーカスを外さない
       el.onclick = () => choose(+el.dataset.i);
@@ -385,9 +410,9 @@
   }
   async function search(q) {
     const seq = ++searchSeq;
-    openSuggest(`<div class="s-msg">Apple Music で探しています…</div>`);
+    openSuggest(`<div class="s-msg">曲を探しています…</div>`);
     try { const r = await itunes(q); if (seq !== searchSeq) return; results = r; active = -1; drawSuggest(); }
-    catch { if (seq === searchSeq) openSuggest(`<div class="s-msg">Apple Music に接続できませんでした。</div>`); }
+    catch { if (seq === searchSeq) openSuggest(`<div class="s-msg">曲の検索につながりませんでした。通信状況を確認して、もう一度入力してみてください。</div>`); }
   }
   function choose(i) {
     const r = results[i]; if (!r) return;
