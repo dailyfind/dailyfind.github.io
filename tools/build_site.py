@@ -11,7 +11,12 @@ DAILY FIND の公開用ファイルを作るスクリプト（GitHub Actions が
 
 import html
 import json
+import re
 import shutil
+import time
+import unicodedata
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 from pathlib import Path
@@ -21,7 +26,7 @@ NAME = "DAILY FIND"
 TAGLINE = "毎日ひとつ、いいものを見つける。"
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "_site"
-SKIP = {".git", ".github", "tools", "_site"}
+SKIP = {".git", ".github", "tools", "_site", ".cache"}
 JST = timezone(timedelta(hours=9))
 
 CATS = {  # common.js と同じ
@@ -89,6 +94,102 @@ def music_links(p):
         ("YouTube Music", ("youtube.com", "youtu.be"), f"https://music.youtube.com/search?q={q}"),
     ]
     return [(name, link if link and any(host == h or host.endswith("." + h) for h in hosts) else url) for name, hosts, url in apps]
+
+
+# ===== Apple Music の「曲そのもの」のリンクを調べる =====
+# iPhone からは Apple の検索の仕組みが使えない（Apple Music アプリへ飛ばされる）ため、
+# ここ（GitHub のサーバー）で「曲名＋アーティスト」から曲のリンクを調べて applelinks.json に書いておく。
+# サイトはこの表を見て、「聴く」ボタンを Apple Music の検索ではなく曲そのものに向ける。
+CACHE = ROOT / ".cache" / "applelinks.json"   # 前回調べた結果（GitHub Actions のキャッシュで次回に引き継ぐ）
+FIRESTORE = "https://firestore.googleapis.com/v1/projects/dailyfind-friends/databases/(default)/documents"
+API_KEY = "AIzaSyB-FxC1jCePfY8FNsXPHv72lKuQ-0OdO5E"   # サイトに書いてある公開用の鍵と同じ
+APPLE_TRACK = re.compile(r"^https://music\.apple\.com/[a-z]{2}/(album|song)/[^\s\"<>]+$")
+MAX_NEW = 15   # 1回に新しく調べる曲の数（Apple の回数制限に引っかからないように）
+
+
+def song_key(title, by):
+    """曲を見分けるための文字（サイトの friends.js と同じ作り方）"""
+    s = unicodedata.normalize("NFKC", f"{title or ''} {by or ''}").lower()
+    return re.sub(r"\s+", "", s)
+
+
+def is_apple_search(link):
+    return str(link or "").startswith("https://music.apple.com/jp/search?")
+
+
+def http_json(url, timeout=15):
+    req = urllib.request.Request(url, headers={"User-Agent": "dailyfind-build/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def public_songs():
+    """誰でも見られる曲（公開の投稿・みんなのプレイリスト）の曲名とアーティスト"""
+    out = []
+    for coll in ("pubposts", "songs"):
+        token = ""
+        for _ in range(10):
+            q = {"pageSize": "300", "key": API_KEY}
+            if token:
+                q["pageToken"] = token
+            try:
+                data = http_json(f"{FIRESTORE}/{coll}?" + urllib.parse.urlencode(q))
+            except Exception as ex:  # 読めなくてもサイトは作る
+                print(f"skip {coll}: {ex}")
+                break
+            for d in data.get("documents", []):
+                f = d.get("fields", {})
+                val = lambda k: f.get(k, {}).get("stringValue", "")
+                if coll == "pubposts" and val("category") != "音楽":
+                    continue
+                out.append((val("title"), val("by")))
+            token = data.get("nextPageToken", "")
+            if not token:
+                break
+    return out
+
+
+def find_apple(title, by):
+    """iTunes の検索で、いちばん合う曲のリンクを返す（見つからなければ空）"""
+    q = urllib.parse.urlencode({"term": f"{title} {by}".strip(), "country": "JP", "media": "music", "entity": "song", "limit": "5"})
+    data = http_json("https://itunes.apple.com/search?" + q)
+    results = [r for r in data.get("results", []) if APPLE_TRACK.match(str(r.get("trackViewUrl", "")))]
+    t = song_key(title, "")
+    def score(r):   # 曲名がぴったり ＞ 曲名で始まる ＞ その他。ライブ版などは後回し
+        name = song_key(r.get("trackName"), "")
+        extra = 1 if re.search(r"live|ライブ|version|ver\.|remix|instrumental|karaoke|カラオケ", name) and not re.search(r"live|ライブ|version|remix", t) else 0
+        return (0 if name == t else 1 if name.startswith(t[:12]) else 2) * 2 + extra
+    best = min(results, key=score) if results else None
+    return best["trackViewUrl"].split("&uo=")[0] if best else ""
+
+
+def resolve_apple_links(picks):
+    try:
+        cache = json.loads(CACHE.read_text(encoding="utf-8"))
+    except Exception:
+        cache = {}
+    wanted = {}
+    for p in picks:
+        if p.get("category") == "音楽" and not APPLE_TRACK.match(safe_link(p.get("link"))):
+            wanted[song_key(p.get("title"), p.get("by"))] = (p.get("title"), p.get("by"))
+    for title, by in public_songs():
+        if title:
+            wanted.setdefault(song_key(title, by), (title, by))
+    new = 0
+    for key, (title, by) in wanted.items():
+        if key in cache or new >= MAX_NEW:
+            continue
+        try:
+            cache[key] = find_apple(title, by)
+            new += 1
+            time.sleep(3.2)
+        except Exception as ex:
+            print(f"apple lookup failed: {title}: {ex}")
+            break
+    CACHE.parent.mkdir(exist_ok=True)
+    CACHE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    print(f"apple links: {sum(1 for v in cache.values() if v)} known, {new} looked up now")
+    return {k: v for k, v in cache.items() if v}
 
 
 def stars(n):
@@ -202,6 +303,18 @@ def main():
         shutil.rmtree(OUT, ignore_errors=True)   # パソコンで試すとき、使用中のフォルダが残っても続ける
     shutil.copytree(ROOT, OUT, dirs_exist_ok=True,
                     ignore=lambda d, names: [n for n in names if n in SKIP] if Path(d) == ROOT else [])
+
+    # Apple Music の曲のリンク：表を書き出し、記事の「検索リンク」も曲のリンクに置きかえる
+    apple = resolve_apple_links(picks)
+    (OUT / "applelinks.json").write_text(json.dumps(apple, ensure_ascii=False), encoding="utf-8")
+    for p in picks:
+        if p.get("category") == "音楽" and is_apple_search(p.get("link")):
+            p["link"] = apple.get(song_key(p.get("title"), p.get("by")), p["link"])
+    site_picks = json.loads((ROOT / "picks.json").read_text(encoding="utf-8"))
+    for sp in site_picks:
+        if sp.get("category") == "音楽" and is_apple_search(sp.get("link")):
+            sp["link"] = apple.get(song_key(sp.get("title"), sp.get("by")), sp["link"])
+    (OUT / "picks.json").write_text(json.dumps(site_picks, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 記事ごとのページ
     (OUT / "p").mkdir(exist_ok=True)

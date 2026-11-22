@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#111111">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122f">
-<link rel="stylesheet" href="friends.css?v=20261122f">
+<link rel="stylesheet" href="style.css?v=20261122g">
+<link rel="stylesheet" href="friends.css?v=20261122g">
 </head>
 <body>
 <div class="wrap">
@@ -39,7 +39,7 @@
     <button type="button" class="navhelp" id="introOpen" aria-label="DAILY FIND の使い方">？使い方</button>
   </nav>
 
-  <!-- はじめて開いた人向けの説明（4ステップ） -->
+  <!-- はじめて開いた人向けの説明（5ステップ） -->
   <div class="intro" id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="introTitle">
     <div class="intro-card">
       <button type="button" class="intro-skip" id="introSkip">スキップ</button>
@@ -52,7 +52,7 @@
   <!-- ホーム画面に追加する方法（スマホで、まだ追加していないときだけ上に出る） -->
   <div class="a2hs" id="a2hs" hidden>
     <div class="a2hs-top">
-      <span>📱 ホーム画面に追加すると、アプリみたいにすぐ開けます</span>
+      <span>📱 ホーム画面に追加すると、アプリのようにすぐ開けます</span>
       <span class="a2hs-btns"><button type="button" id="a2hsOpen">やり方を見る</button><button type="button" id="a2hsClose" aria-label="閉じる">×</button></span>
     </div>
     <div class="a2hs-body" id="a2hsBody" hidden></div>
@@ -64,7 +64,7 @@
   <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="introLink" style="text-decoration:none">❓ DAILY FIND とは</a><a href="#feedback" style="text-decoration:none">💬 意見を送る</a><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a><span id="total"></span><a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
 </div>
 
-<script src="common.js?v=20261122f"></script>
+<script src="common.js?v=20261122g"></script>
 <script>
   let picks = [];
   let filter = "ALL";
@@ -200,7 +200,7 @@
 
   function render() {
     const app = document.getElementById("app");
-    if (!picks.length) { app.innerHTML = `<p class="empty" style="padding:40px 0">まだおすすめがありません。「記事を書く」画面から追加してください。</p>`; return; }
+    if (!picks.length) { app.innerHTML = `<p class="empty" style="padding:40px 0">まだおすすめがありません。もうすぐ最初の1つが届きます。</p>`; return; }
 
     const hash = decodeURIComponent(location.hash.slice(1));
     if (hash.startsWith("pl:")) {
@@ -218,7 +218,7 @@
     const [latest, ...past] = picks;
     // プレイリストは「これまでのおすすめ」の中の PLAYLISTS タブで見る（トップをすっきりさせるため）
     const cats = ["ALL", ...new Set(picks.map(p => p.category)), ...(playlists().length ? ["PLAYLISTS"] : [])];
-    app.innerHTML = `<div id="homeNews"></div><div class="section-head" style="border-top:0;padding-top:24px;margin-bottom:0"><h3>Today's Pick<small>管理者のおすすめ</small></h3></div>`
+    app.innerHTML = `<div id="homeNews"></div><div class="section-head" style="border-top:0;padding-top:24px;margin-bottom:0"><h3>Today's Pick<small>今日のおすすめ</small></h3></div>`
       + feature(latest) + `<div id="homeExtras"></div>` + (past.length || playlists().length ? `
       <section>
         <div class="section-head">
@@ -310,10 +310,11 @@
   // ===== はじめての人への説明 =====
   (() => {
     const slides = [
-      { icon: "👋", title: "DAILY FIND へようこそ", text: "<b>毎日ひとつ、いいもの</b>を見つける場所です。管理者が毎日、音楽・本・映画・お店などのおすすめを1つ紹介します。トップの「Today's Pick」が今日のおすすめです。" },
-      { icon: "👥", title: "友達とシェアしよう", text: "投稿を「<b>公開</b>」にすると、誰でも「<b>見つける</b>」で見られます。気になる人は<b>フォロー</b>すると、その人の投稿が「フォロー中」にまとまります。<br>仲間内だけで話したいときは「<b>グループ</b>」へ。招待リンクを LINE で送るだけで、投稿は<b>メンバーだけ</b>に見えます。" },
-      { icon: "🙂", title: "マイページ", text: "「<b>マイページ</b>」で、ニックネーム・<b>写真のアイコン</b>・自己紹介を決められます。自分の投稿、フォロー中、フォロワーもここで見られます。<br>メールアドレスもパスワードも要りません。シェアされた曲は「みんなのプレイリスト」にも並びます。" },
-      { icon: "📱", title: "ホーム画面に追加しよう", text: "ホーム画面に追加すると、アプリみたいにすぐ開けます。やり方は、ページの上の案内か、いちばん下の「📱 ホーム画面に追加する方法」で見られます。<br>気づいたことは「<b>💬 意見を送る</b>」からいつでもどうぞ。" },
+      { icon: "👋", title: "DAILY FIND へようこそ", text: "<b>毎日ひとつ、いいもの</b>を紹介するサイトです。音楽・本・映画・お店など、管理者が選んだおすすめを毎日1つ届けます。<br>ホームの「<b>Today's Pick</b>」が今日のおすすめです。" },
+      { icon: "🔍", title: "あなたのおすすめもシェア", text: "好きな曲や本を投稿できます。「<b>公開</b>」で投稿すると、誰でも「<b>見つける</b>」で見られます。<br>気になる人を<b>フォロー</b>すると、その人の投稿が「フォロー中」にまとまります。" },
+      { icon: "👥", title: "仲間だけのグループ", text: "仲のいい友達だけで見せ合いたいときは「<b>グループ</b>」へ。招待リンクを LINE で送るだけで友達が参加でき、投稿は<b>メンバーにしか見えません</b>。" },
+      { icon: "🙂", title: "マイページ", text: "「<b>マイページ</b>」で、ニックネーム・<b>写真のアイコン</b>・自己紹介を決められます。自分の投稿、フォロー中、フォロワーもここで見られます。<br>メールアドレスもパスワードも要りません。" },
+      { icon: "📱", title: "ホーム画面に追加しよう", text: "ホーム画面に追加すると、アプリのようにワンタップで開けます。やり方は、いちばん下の「📱 ホーム画面に追加する方法」で見られます。<br>気づいたことは「<b>💬 意見を送る</b>」からいつでもどうぞ。" },
     ];
     let i = 0;
     const el = document.getElementById("intro");
@@ -358,7 +359,7 @@
     const lineNote = inApp ? `<p class="a2hs-warn">⚠️ 今は${inLINE ? " LINE " : "アプリ"}の中で開いています。このままではホーム画面に追加できません。<br>
       右下（または右上）のメニュー「︙」から「<b>ブラウザで開く</b>」を押して、${isAndroid ? "Chrome" : "Safari"} で開き直してください。</p>` : "";
     const body = `${lineNote}${isIOS ? iosSteps : isAndroid ? androidSteps : iosSteps + androidSteps}
-      <p class="a2hs-tip">💡 グループに参加するときは、<b>先にホーム画面に追加して、アイコンから開いてから</b>参加してください。${isAndroid ? "ブラウザ" : "Safari"} とホーム画面のアイコンは、別々にログイン状態を覚えるためです。</p>`;
+      <p class="a2hs-tip">💡 追加したら、<b>これからはホーム画面のアイコンから</b>開いてください。${isAndroid ? "ブラウザ" : "Safari"} とホーム画面のアイコンでは、マイページやグループが別々になります（先にマイページを作った場合は、アイコンから開いて作り直してください）。</p>`;
     const box = document.getElementById("a2hs"), bodyEl = document.getElementById("a2hsBody");
     bodyEl.innerHTML = body;
     let closed = false; try { closed = localStorage.getItem("df_a2hs_closed") === "1"; } catch {}
@@ -375,6 +376,6 @@
     friendsReady: () => { if (FRIENDS_VIEW(location.hash.slice(1))) route(); else if (picks.length && document.getElementById("homeExtras")) window.dispatchEvent(new Event("df:home")); },
   };
 </script>
-<script type="module" src="friends.js?v=20261122f"></script>
+<script type="module" src="friends.js?v=20261122g"></script>
 </body>
 </html>

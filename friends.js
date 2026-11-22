@@ -140,8 +140,24 @@ async function hydrate() {
     spans.filter(s => s.dataset.uid === u).forEach(s => { const img = new Image(); img.src = p.photo; img.alt = ""; s.textContent = ""; s.append(img); s.classList.add("ph"); });
   }));
 }
+// Apple Music の「曲そのもの」のリンク。サイトを作るとき（GitHub）に調べた表 applelinks.json を使い、
+// 「聴く」ボタンが Apple Music の検索になっているものを、曲のページに置きかえる（iPhone では検索の仕組みが使えないため）
+let appleMap = null;
+const songKey = s => String(s || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+fetch("applelinks.json?h=" + Math.floor(Date.now() / 3600000), { cache: "no-store" })
+  .then(r => (r.ok ? r.json() : {})).catch(() => ({})).then(m => { appleMap = m && typeof m === "object" ? m : {}; upgradeLinks(); });
+function upgradeLinks() {
+  if (!appleMap) return;
+  document.querySelectorAll('a[data-music-app="apple"]:not([data-up])').forEach(a => {
+    a.dataset.up = "1";
+    let u; try { u = new URL(a.href); } catch { return; }
+    if (u.hostname !== "music.apple.com" || !u.pathname.endsWith("/search")) return;
+    const url = appleMap[songKey(u.searchParams.get("term"))];
+    if (typeof url === "string" && /^https:\/\/music\.apple\.com\/[a-z]{2}\/(album|song)\//.test(url)) a.href = url;
+  });
+}
 let hyTimer = null;
-new MutationObserver(() => { clearTimeout(hyTimer); hyTimer = setTimeout(hydrate, 60); }).observe(document.body, { childList: true, subtree: true });
+new MutationObserver(() => { clearTimeout(hyTimer); hyTimer = setTimeout(() => { hydrate(); upgradeLinks(); }, 60); }).observe(document.body, { childList: true, subtree: true });
 
 // 写真を正方形・小さい JPEG にする（Firestore にそのまま入れるため）
 const readAsDataURL = f => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ng; r.readAsDataURL(f); });
@@ -168,7 +184,7 @@ const profileEditorHtml = cur => `
     <label>ニックネーム<input id="peNick" maxlength="20" value="${esc(cur.nickname)}" placeholder="例：こうへい" autocomplete="nickname"></label>
     <label>ひとこと自己紹介（なくてもOK）<textarea id="peBio" maxlength="160" style="min-height:80px" placeholder="例：最近はシティポップばかり聴いています">${esc(cur.bio)}</textarea></label>
     <div class="actions"><button class="btn" id="peSave">保存する</button><span class="msg" id="peMsg"></span></div>
-    <p class="note">写真・ニックネーム・自己紹介は、サイトを見る人なら誰でも見られます。顔写真や、住所・学校など個人が分かるものには気をつけてください。</p>
+    <p class="note">写真・ニックネーム・自己紹介は、サイトを見る人なら誰でも見られます。顔写真や、住所・学校名など個人が分かるものは載せないようにしましょう。</p>
   </div>`;
 function bindProfileEditor(cur, onSaved) {
   const redraw = () => { $("peAv").innerHTML = bigAv(cur); $("peNoPhoto").hidden = !cur.photo; };
@@ -176,7 +192,7 @@ function bindProfileEditor(cur, onSaved) {
   $("pePhoto").onclick = () => $("peFile").click();
   $("peFile").onchange = async () => {
     const f = $("peFile").files[0]; if (!f) return;
-    setMsg("peMsg", "写真を小さくしています…", true);
+    setMsg("peMsg", "写真を準備しています…", true);
     try { cur.photo = await photoFromFile(f); redraw(); setMsg("peMsg", "「保存する」を押すと反映されます", true); }
     catch (e) { console.error(e); setMsg("peMsg", "この写真は使えませんでした。別の写真を選んでください。", false); }
     $("peFile").value = "";
@@ -375,13 +391,12 @@ function welcome() {
   root.innerHTML = `
     ${has ? `<div class="bar"><h2>グループ</h2>${groupSelectHtml()}</div>` : ""}
     <div class="panel">
-      <h2>友達と「いいもの」をシェアしよう</h2>
-      <p>グループは誰でも作れます。招待リンクを送ると、友達はニックネームだけで参加できます。メールアドレスもパスワードも要りません。</p>
-      <p>招待リンクをもらった人は、そのリンクを開くだけで参加画面になります。</p>
+      <h2>友達だけのグループを作ろう</h2>
+      <p>仲のいい友達だけのグループを作れます。作ったあとに出る招待リンクを LINE などで送ると、友達はそのリンクを開くだけで参加できます。メールアドレスもパスワードも要りません。</p>
       <label>グループの名前<input id="gName" maxlength="30" placeholder="例：いつもの4人"></label>
       ${whoHtml("g")}
       <div class="actions"><button class="btn" id="gCreate">グループを作る</button><span class="msg" id="gMsg"></span></div>
-      <p class="note">グループの投稿は、メンバーとサイトの管理者だけが見られます。</p>
+      <p class="note">グループの投稿は、メンバーとサイトの管理者にしか見えません。</p>
     </div>`;
   if (!myProfile) bindPicker("gPick", whoDraft);
   bindGroupSelect();
@@ -412,7 +427,7 @@ function joinScreen(gid, key) {
   root.innerHTML = `
     <div class="panel">
       <h2>グループに招待されています</h2>
-      <p>${myProfile ? "「参加する」を押すだけで参加できます。" : "ニックネームとアイコンを選ぶだけで参加できます。メールアドレスもパスワードも要りません。"}</p>
+      <p>${myProfile ? "「参加する」を押すだけで参加できます。" : "ニックネームとアイコンを決めるだけで参加できます。メールアドレスもパスワードも要りません。"}</p>
       ${whoHtml("j")}
       <div class="actions"><button class="btn" id="jGo">参加する</button><span class="msg" id="jMsg"></span></div>
       <p class="note">グループの投稿は、メンバーとサイトの管理者だけが見られます。</p>
@@ -442,7 +457,7 @@ function groupScreen() {
     <div class="members" id="members"></div>
     <div class="panel" id="invitePanel" hidden style="margin-bottom:20px">
       <h2>招待リンク</h2>
-      <p>このリンクを LINE などで友達に送ってください。開くとニックネームだけで参加できます。リンクを知っている人は誰でも参加できるので、送る相手に気をつけてください。</p>
+      <p>このリンクを LINE などで友達に送ってください。開くだけで参加できます。リンクを知っている人は誰でも参加できるので、送る相手に気をつけてください。</p>
       <div class="invite"><input id="invUrl" readonly value="${esc(inviteUrl(current.gid, current.key))}"><button class="btn small" id="copyInv">コピー</button></div>
       <div class="actions"><a class="btn small ghost" href="https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(inviteUrl(current.gid, current.key))}" target="_blank" rel="noopener">LINE で送る</a><span class="msg" id="invMsg"></span></div>
     </div>
@@ -546,7 +561,7 @@ async function openCompose(post, target, after) {
     <div class="actions"><button type="button" class="btn small" id="srcSong">🎵 曲を探す</button><button type="button" class="btn small ghost" id="srcMine">DAILY FIND の記事から選ぶ</button></div>
     <input id="mq" type="search" enterkeyhint="search" placeholder="曲名やアーティスト名を入れる" autocomplete="off">
     <div class="suggest" id="suggest" hidden></div>
-    <div class="picked"><div id="pv"></div><div class="note">候補を選ぶと、タイトル・ジャケット・リンクが入ります。曲以外は下に直接書いてください。</div></div>
+    <div class="picked"><div id="pv"></div><div class="note">曲名を入れて候補から選ぶと、タイトル・ジャケット・リンクが自動で入ります。曲以外は下に直接書いてください。</div></div>
     <div class="row2">
       <label>カテゴリ<select id="fCat">${Object.keys(CATS).map(k => `<option ${k === draft.category ? "selected" : ""}>${k}</option>`).join("")}</select></label>
       <label>タイトル<input id="fTitle" maxlength="100" value="${esc(draft.title)}"></label>
@@ -665,7 +680,7 @@ function drawAll() {
   if (allTab === "new") {
     unsubs.push(onSnapshot(query(collection(db, "pubposts"), orderBy("createdAt", "desc"), limit(60)), snap => {
       const list = tag(snap.docs, { kind: "pub" });
-      body.innerHTML = `<p class="note" style="margin:0 0 6px">誰でも見られる投稿です。名前を押すと、その人のページを見たりフォローしたりできます。</p>`
+      body.innerHTML = `<p class="note" style="margin:0 0 6px">公開された投稿が新しい順に並びます。名前を押すと、その人のページを見たりフォローしたりできます。</p>`
         + (list.length ? list.map(p => postHtml(p)).join("") : `<p class="empty">まだ投稿がありません。「＋ 投稿する」から、最初の1つをシェアしましょう。</p>`);
       bindPostOps(body);
     }, e => { console.error(e); body.innerHTML = `<p class="empty">読み込めませんでした。</p>`; }));
@@ -691,7 +706,7 @@ async function followFeed(body) {
   let tos = [];
   try { tos = await myFollowing(); } catch { body.innerHTML = `<p class="empty">読み込めませんでした。</p>`; return; }
   if (allTab !== "follow") return;
-  if (!tos.length) { body.innerHTML = `<p class="empty">まだ誰もフォローしていません。「新着」で気になる人の名前を押すと、その人のページからフォローできます。</p>`; return; }
+  if (!tos.length) { body.innerHTML = `<p class="empty">まだ誰もフォローしていません。「新着」で気になる人の名前を押して、その人のページでフォローしてみましょう。</p>`; return; }
   const chunks = []; for (let i = 0; i < tos.length; i += 30) chunks.push(tos.slice(i, i + 30));
   const parts = [];
   const draw = () => {
@@ -722,7 +737,7 @@ async function meView() {
   if (!myProfile) {
     const cur = profDraft(null);
     root.innerHTML = `<div class="panel"><h2>マイページを作りましょう</h2>
-      <p>写真やニックネームを決めると、投稿したり、気になる人をフォローしたりできます。メールアドレスもパスワードも要りません。</p>${profileEditorHtml(cur)}</div>`;
+      <p>ニックネームと写真（なくてもOK）を決めると、投稿したり、気になる人をフォローしたりできます。メールアドレスもパスワードも要りません。</p>${profileEditorHtml(cur)}</div>`;
     bindProfileEditor(cur, meView);
     return;
   }
@@ -739,7 +754,7 @@ async function meView() {
     <section class="compose" id="compose" hidden style="margin-top:16px"></section>
     <div class="tabs2" style="margin-top:22px"><button data-t="posts">自分の投稿</button><button data-t="following">フォロー中</button><button data-t="followers">フォロワー</button></div>
     <div id="mbody"></div>
-    <p class="note" style="margin-top:36px">🔒 マイページは、この端末のこのブラウザに結びついています（メールやパスワードを使わないため）。ブラウザのデータを消したり、別のスマホで開いたりすると、別の人として扱われます。</p>
+    <p class="note" style="margin-top:36px">🔒 マイページは、このスマホのこのブラウザ（またはホーム画面のアイコン）に結びついています。メールやパスワードを使わないかわりに、ブラウザのデータを消したり別のスマホで開いたりすると、別の人として扱われます。</p>
     <button class="fab" id="fab" aria-label="投稿する">＋</button>`;
   const tabsOn = () => root.querySelectorAll(".tabs2 button").forEach(x => x.classList.toggle("on", x.dataset.t === meTab));
   root.querySelectorAll(".tabs2 button, .counts button").forEach(b => b.onclick = () => { meTab = b.dataset.t; tabsOn(); drawMe(); });
@@ -859,7 +874,7 @@ async function fillHome() {
   }
   $("hxMore").innerHTML = sources
     ? `${groupOk ? `<a href="#group">グループを開く →</a>` : ""}<a href="#all">「見つける」を開く →</a>`
-    : `<div class="hx-cta"><p>友達とグループを作ったり、気になる人をフォローしたりすると、ここに友達のおすすめが並びます。</p><a class="btn small" href="#all">「見つける」を開く</a><a class="btn small ghost" href="#group">グループを作る</a></div>`;
+    : `<div class="hx-cta"><p>気になる人をフォローしたり、友達とグループを作ったりすると、ここに友達のおすすめが並びます。</p><a class="btn small" href="#all">「見つける」を開く</a><a class="btn small ghost" href="#group">グループを作る</a></div>`;
 }
 window.addEventListener("df:leavehome", () => { homeUnsubs.forEach(u => u()); homeUnsubs = []; homeGen++; });
 
@@ -870,7 +885,7 @@ function feedbackView() {
   root.innerHTML = `
     <div class="panel">
       <h2>💬 意見ボックス</h2>
-      <p>「こうなったらいいな」「ここが使いにくい」「動かない」など、なんでも送ってください。読むのは<b>サイトの管理者だけ</b>です。</p>
+      <p>「こうなったらいいな」「ここが使いにくい」「動かない」など、なんでも気軽に送ってください。読むのは<b>サイトの管理者だけ</b>です。</p>
       <div class="lbl">どんな内容？<div class="fb-kinds" id="fbKinds">${["要望", "不具合", "感想", "その他"].map(k => `<button type="button" data-k="${k}" class="${k === st.kind ? "on" : ""}">${k}</button>`).join("")}</div></div>
       <label>内容<textarea id="fbText" maxlength="1000" placeholder="例：プレイリストを並べ替えたい"></textarea></label>
       <label>ニックネーム（なくてもOK）<input id="fbNick" maxlength="20" value="${esc(nick)}" placeholder="名前を書かなくても送れます"></label>
