@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>DAILY FIND FRIENDS</title>
+<!-- 【安全対策】読み込み・通信してよい相手を限定する（Firebase・Apple・Deezer・フォントだけ） -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://api.deezer.com; connect-src 'self' https://*.googleapis.com https://itunes.apple.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src 'self' https://dailyfind-friends.firebaseapp.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../style.css">
+<style>
+  [hidden] { display: none !important; }
+  .fhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 0 10px; border-bottom: 3px solid var(--rule); flex-wrap: wrap; }
+  .fhead h1 { font-family: var(--display); font-weight: 800; letter-spacing: -.03em; font-size: 28px; margin: 0; line-height: 1; }
+  .fhead h1 a { text-decoration: none; }
+  .fhead h1 span { color: var(--accent); }
+  .fhead .gsel { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .fhead select { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--hair); border-radius: 99px; padding: 4px 10px; max-width: 200px; }
+  .screen { padding: 24px 0 60px; }
+  .panel { background: var(--card); border-radius: 12px; padding: 22px; display: grid; gap: 14px; max-width: 560px; }
+  .panel h2 { margin: 0; font-size: 20px; }
+  .panel p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+  label, .lbl { display: grid; gap: 6px; font-size: 12px; letter-spacing: .08em; color: var(--muted); font-weight: 500; }
+  input, select, textarea { font: inherit; font-size: 16px; color: var(--ink); background: var(--paper); border: 1px solid var(--hair); border-radius: 8px; padding: 11px 12px; width: 100%; letter-spacing: normal; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn { font: inherit; font-size: 15px; font-weight: 700; letter-spacing: .04em; padding: 12px 26px; border-radius: 99px; cursor: pointer; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--hair); }
+  .btn.small { padding: 5px 14px; font-size: 12px; font-weight: 500; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .msg { font-size: 13px; } .msg.ok { color: #2f7a45; } .msg.err { color: var(--accent); }
+  .note { font-size: 12px; color: var(--muted); line-height: 1.7; }
+  .invite { display: flex; gap: 8px; } .invite input { font-size: 13px; }
+
+  /* 上部のバー */
+  .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .bar h2 { margin: 0; font-family: var(--serif); font-size: 24px; }
+  .bar .who { font-size: 13px; color: var(--muted); }
+  .members { display: flex; gap: 6px; flex-wrap: wrap; margin: -6px 0 20px; }
+  .chip { font-size: 12px; background: var(--card); border-radius: 99px; padding: 3px 10px; color: var(--muted); }
+  .chip.me { color: var(--accent); }
+
+  /* 投稿フォーム */
+  .compose { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 28px; display: grid; gap: 12px; }
+  .compose[hidden] { display: none; }
+  .rate { display: flex; gap: 4px; }
+  .rate button { background: none; border: 0; font-size: 30px; line-height: 1; cursor: pointer; color: var(--hair); padding: 2px 3px; touch-action: manipulation; }
+  .rate button.on { color: var(--star); }
+  .picked { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
+  .picked .cover { aspect-ratio: 1; border-radius: 4px; }
+  .picked .cover-en { font-size: 12px; } .picked .cover-ja { display: none; }
+  .suggest { background: var(--paper); border: 1px solid var(--ink); border-radius: 8px; max-height: 360px; overflow-y: auto; }
+  .s-item { display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--hair); }
+  .s-item:hover { background: var(--card); }
+  .s-item img, .s-item .cover { width: 48px; height: 48px; object-fit: cover; border-radius: 3px; }
+  .s-item .cover-en { font-size: 10px; } .s-item .cover-ja { display: none; }
+  .s-t { font-weight: 700; font-size: 15px; line-height: 1.4; } .s-a { font-size: 12px; color: var(--muted); }
+  .s-msg { padding: 12px; font-size: 13px; color: var(--muted); }
+  .src-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* タイムライン */
+  .feed { display: grid; gap: 0; }
+  .post { display: grid; grid-template-columns: 96px 1fr; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--hair); }
+  .post .cover { aspect-ratio: 1; border-radius: 4px; }
+  .post .cover-en { font-size: 16px; } .post .cover-ja { display: none; }
+  .post .pk { font-size: 11px; letter-spacing: .18em; color: var(--accent); font-weight: 700; }
+  .post .pk span { color: var(--muted); font-weight: 400; letter-spacing: .05em; margin-left: 8px; }
+  .post h3 { margin: 4px 0 0; font-size: 18px; line-height: 1.4; }
+  .post .by { color: var(--muted); font-size: 13px; }
+  .post .stars { font-size: 13px; display: block; margin: 4px 0; }
+  .post p { margin: 6px 0 0; }
+  .post .ops { display: flex; gap: 12px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .post .ops button { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--muted); text-decoration: underline; cursor: pointer; }
+  .post .ops button.armed { color: var(--accent); font-weight: 700; }
+  .post .listen { font-size: 12px; font-weight: 700; text-decoration: none; border: 1px solid var(--hair); border-radius: 99px; padding: 3px 12px; }
+  .empty { color: var(--muted); padding: 30px 0; }
+  details.manage { margin-top: 40px; font-size: 14px; }
+  details.manage summary { cursor: pointer; color: var(--muted); }
+  details.manage .panel { margin-top: 12px; }
+  .mrow { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--hair); }
+  @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } .post { grid-template-columns: 72px 1fr; gap: 12px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="fhead">
+    <h1><a href="../">DAILY FIND</a> <span>FRIENDS</span></h1>
+    <div class="gsel" id="gsel" hidden>グループ <select id="groupSelect" aria-label="グループを選ぶ"></select></div>
+  </header>
+
+  <main class="screen" id="screen"><p class="empty">読み込んでいます…</p></main>
+
+  <footer><span>DAILY FIND FRIENDS</span><span>メールもパスワードも使いません</span></footer>
+</div>
+
+<script src="../common.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, orderBy, limit,
+           onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // Firebase の接続情報（公開してよい情報。データの守りは Firestore のルールで行う）
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-FxC1jCePfY8FNsXPHv72lKuQ-0OdO5E",
+    authDomain: "dailyfind-friends.firebaseapp.com",
+    projectId: "dailyfind-friends",
+    storageBucket: "dailyfind-friends.firebasestorage.app",
+    messagingSenderId: "765801083878",
+    appId: "1:765801083878:web:db4eec9e1531309f4adc27",
+  };
+
+  // ほかのサイトに埋め込まれていたら画面を出さない
+  if (window.top !== window.self) { document.documentElement.innerHTML = ""; throw new Error("framed"); }
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  // 匿名ログインだけ使うので、ポップアップ用の部品は読み込まない
+  const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+  const db = getFirestore(app);
+  const $ = id => document.getElementById(id);
+  const screen = $("screen");
+
+  // ===== この端末に覚えておくグループ（合言葉つき） =====
+  const LS_KEY = "dff_groups";
+  const loadGroups = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch { return []; } };
+  const saveGroups = gs => { try { localStorage.setItem(LS_KEY, JSON.stringify(gs)); } catch {} };
+  const rememberGroup = (gid, key, name) => {
+    const gs = loadGroups().filter(g => g.gid !== gid);
+    gs.unshift({ gid, key, name: name || "" }); saveGroups(gs);
+  };
+  const forgetGroup = gid => saveGroups(loadGroups().filter(g => g.gid !== gid));
+  const lastGid = () => { try { return localStorage.getItem("dff_last") || ""; } catch { return ""; } };
+  const setLast = gid => { try { localStorage.setItem("dff_last", gid); } catch {} };
+
+  const inviteUrl = (gid, key) => `${location.origin}${location.pathname}#g=${encodeURIComponent(gid)}&k=${encodeURIComponent(key)}`;
+  function randomKey(n = 28) {
+    const abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    const a = crypto.getRandomValues(new Uint32Array(n));
+    return [...a].map(x => abc[x % abc.length]).join("");
+  }
+  const fmtTime = ts => { if (!ts || !ts.toDate) return ""; const d = ts.toDate();
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+
+  let me = null;            // 匿名ログインの番号（誰かは分からない）
+  let current = null;       // { gid, key, name, owner, nickname }
+  let unsubs = [];
+  const stopListening = () => { unsubs.forEach(u => u()); unsubs = []; };
+
+  // ===== はじめ：匿名ログイン → 招待リンクを読む → 画面を決める =====
+  onAuthStateChanged(auth, async user => {
+    if (!user) { try { await signInAnonymously(auth); } catch (e) { fatal("つながりませんでした。通信状況を確認して、ページを開き直してください。"); } return; }
+    me = user.uid;
+    route();
+  });
+  window.addEventListener("hashchange", route);
+
+  async function route() {
+    stopListening();
+    const h = new URLSearchParams(location.hash.slice(1));
+    const gid = h.get("g"), key = h.get("k");
+    if (gid && key) {
+      rememberGroup(gid, key);
+      history.replaceState(null, "", location.pathname);   // アドレス欄から合言葉を消しておく
+      return openGroup(gid, key);
+    }
+    const gs = loadGroups();
+    const pick = gs.find(g => g.gid === lastGid()) || gs[0];
+    if (pick) return openGroup(pick.gid, pick.key);
+    welcome();
+  }
+
+  function fatal(t) { screen.innerHTML = `<p class="empty">${esc(t)}</p>`; }
+
+  function drawGroupSelect() {
+    const gs = loadGroups();
+    $("gsel").hidden = gs.length === 0;
+    $("groupSelect").innerHTML = gs.map(g => `<option value="${esc(g.gid)}" ${current && g.gid === current.gid ? "selected" : ""}>${esc(g.name || "（参加前のグループ）")}</option>`).join("")
+      + `<option value="__new">＋ 新しいグループを作る</option>`;
+  }
+  $("groupSelect").onchange = e => {
+    const v = e.target.value;
+    if (v === "__new") { stopListening(); current = null; return welcome(true); }
+    const g = loadGroups().find(x => x.gid === v); if (g) { stopListening(); openGroup(g.gid, g.key); }
+  };
+
+  // ===== グループを作る画面 =====
+  function welcome(fromMenu) {
+    current = null; drawGroupSelect();
+    screen.innerHTML = `
+      <div class="panel">
+        <h2>友達と「いいもの」をシェアしよう</h2>
+        <p>グループを作って招待リンクを送ると、友達がニックネームだけで参加できます。メールアドレスもパスワードも要りません。</p>
+        ${fromMenu ? "" : `<p>友達から招待リンクをもらった人は、そのリンクを開いてください。</p>`}
+        <label>グループの名前<input id="gName" maxlength="30" placeholder="例：いつもの4人"></label>
+        <label>あなたのニックネーム<input id="gNick" maxlength="20" placeholder="例：こうへい"></label>
+        <div class="actions"><button class="btn" id="gCreate">グループを作る</button><span class="msg" id="gMsg"></span></div>
+        <p class="note">保存されるのは、グループ名・ニックネーム・投稿だけです。名前やメールアドレスなどの個人情報は保存しません。</p>
+      </div>`;
+    $("gCreate").onclick = async () => {
+      const name = $("gName").value.trim(), nickname = $("gNick").value.trim();
+      if (!name || !nickname) return setMsg("gMsg", "グループの名前とニックネームを入れてください。", false);
+      $("gCreate").disabled = true; setMsg("gMsg", "作っています…", true);
+      try {
+        const key = randomKey();
+        const ref = doc(collection(db, "groups"));
+        await setDoc(ref, { name, owner: me, key, createdAt: serverTimestamp() });
+        await setDoc(doc(db, "groups", ref.id, "members", me), { nickname, key, joinedAt: serverTimestamp() });
+        rememberGroup(ref.id, key, name);
+        openGroup(ref.id, key, true);
+      } catch (e) { console.error(e); setMsg("gMsg", "作れませんでした。少し待ってからもう一度押してください。", false); $("gCreate").disabled = false; }
+    };
+  }
+
+  function setMsg(id, t, ok) { const el = $(id); if (el) { el.textContent = t; el.className = "msg " + (ok ? "ok" : "err"); } }
+
+  // ===== グループを開く =====
+  async function openGroup(gid, key, justCreated) {
+    setLast(gid);
+    let member = null;
+    try { const m = await getDoc(doc(db, "groups", gid, "members", me)); member = m.exists() ? m.data() : null; } catch {}
+    if (!member) return joinScreen(gid, key);
+    // すでにメンバーなら、招待リンクが作り直されていてもそのまま使える（最新の合言葉を覚え直す）
+    let g;
+    try { g = (await getDoc(doc(db, "groups", gid))).data(); } catch { g = null; }
+    if (!g) { forgetGroup(gid); return fatal("このグループは見つかりませんでした。削除されたか、外された可能性があります。"); }
+    current = { gid, key: g.key, name: g.name, owner: g.owner, nickname: member.nickname };
+    rememberGroup(gid, g.key, g.name);
+    drawGroupSelect();
+    groupScreen(justCreated);
+  }
+
+  // ===== 参加画面（ニックネームを入れるだけ） =====
+  function joinScreen(gid, key) {
+    current = null; drawGroupSelect();
+    screen.innerHTML = `
+      <div class="panel">
+        <h2>グループに招待されています</h2>
+        <p>ニックネームを入れるだけで参加できます。メールアドレスもパスワードも要りません。</p>
+        <label>あなたのニックネーム<input id="jNick" maxlength="20" placeholder="例：みさき" autocomplete="nickname"></label>
+        <div class="actions"><button class="btn" id="jGo">参加する</button><span class="msg" id="jMsg"></span></div>
+        <p class="note">保存されるのは、ニックネームと、あなたの投稿だけです。</p>
+      </div>`;
+    $("jGo").onclick = async () => {
+      const nickname = $("jNick").value.trim();
+      if (!nickname) return setMsg("jMsg", "ニックネームを入れてください。", false);
+      $("jGo").disabled = true; setMsg("jMsg", "参加しています…", true);
+      try {
+        await setDoc(doc(db, "groups", gid, "members", me), { nickname, key, joinedAt: serverTimestamp() });
+        openGroup(gid, key);
+      } catch (e) {
+        console.error(e); forgetGroup(gid);
+        setMsg("jMsg", "参加できませんでした。招待リンクが古いか、まちがっている可能性があります。", false); $("jGo").disabled = false;
+      }
+    };
+  }
+
+  // ===== グループの画面（投稿とタイムライン） =====
+  let members = {};
+  function groupScreen(justCreated) {
+    const isOwner = current.owner === me;
+    screen.innerHTML = `
+      <div class="bar">
+        <div><h2>${esc(current.name)}</h2><div class="who">あなた：${esc(current.nickname)}</div></div>
+        <div class="actions">
+          <button class="btn small ghost" id="inviteBtn">友達を招待</button>
+          <button class="btn small" id="newBtn">＋ 投稿する</button>
+        </div>
+      </div>
+      <div class="members" id="members"></div>
+      <div class="panel" id="invitePanel" ${justCreated ? "" : "hidden"} style="margin-bottom:24px">
+        <h2>招待リンク</h2>
+        <p>このリンクを LINE などで友達に送ってください。開くとニックネームだけで参加できます。リンクを知っている人は誰でも参加できるので、送る相手に気をつけてください。</p>
+        <div class="invite"><input id="invUrl" readonly value="${esc(inviteUrl(current.gid, current.key))}"><button class="btn small" id="copyInv">コピー</button></div>
+        <div class="actions"><a class="btn small ghost" style="text-decoration:none" href="https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(inviteUrl(current.gid, current.key))}" target="_blank" rel="noopener">LINE で送る</a><span class="msg" id="invMsg"></span></div>
+      </div>
+      <section class="compose" id="compose" hidden></section>
+      <div class="feed" id="feed"><p class="empty">読み込んでいます…</p></div>
+      <details class="manage">
+        <summary>設定（ニックネーム・グループを抜ける${isOwner ? "・メンバー管理" : ""}）</summary>
+        <div class="panel">
+          <label>ニックネームを変える<input id="nickEdit" maxlength="20" value="${esc(current.nickname)}"></label>
+          <div class="actions"><button class="btn small" id="nickSave">変更する</button><span class="msg" id="nickMsg"></span></div>
+          ${isOwner ? `
+            <h2 style="font-size:16px;margin-top:10px">メンバー</h2><div id="mlist"></div>
+            <p>知らない人が入っていたら「外す」を押してから、招待リンクを作り直してください（古いリンクは使えなくなります）。</p>
+            <div class="actions"><button class="btn small ghost" id="rotate">招待リンクを作り直す</button><span class="msg" id="rotMsg"></span></div>` : ""}
+          <div class="actions" style="margin-top:10px"><button class="btn small ghost" id="leave">このグループを抜ける</button></div>
+        </div>
+      </details>`;
+
+    $("inviteBtn").onclick = () => { $("invitePanel").hidden = !$("invitePanel").hidden; };
+    $("copyInv").onclick = async () => {
+      try { await navigator.clipboard.writeText($("invUrl").value); setMsg("invMsg", "コピーしました", true); }
+      catch { $("invUrl").select(); setMsg("invMsg", "選択しました。長押しでコピーしてください", true); }
+    };
+    $("newBtn").onclick = () => openCompose(null);
+    $("nickSave").onclick = async () => {
+      const n = $("nickEdit").value.trim(); if (!n) return;
+      try { await updateDoc(doc(db, "groups", current.gid, "members", me), { nickname: n }); current.nickname = n; setMsg("nickMsg", "変更しました（これからの投稿に使われます）", true); }
+      catch { setMsg("nickMsg", "変更できませんでした", false); }
+    };
+    $("leave").onclick = async e => {
+      const b = e.target;
+      if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "本当に抜ける？（もう一度押す）"; return; }
+      try { await deleteDoc(doc(db, "groups", current.gid, "members", me)); } catch {}
+      forgetGroup(current.gid); stopListening(); current = null; route();
+    };
+    if (isOwner) {
+      $("rotate").onclick = async () => {
+        const key = randomKey();
+        try {
+          // 古い招待リンクでは新しく参加できなくなる（今のメンバーはそのまま）
+          await updateDoc(doc(db, "groups", current.gid), { key });
+          rememberGroup(current.gid, key, current.name);
+          setMsg("rotMsg", "作り直しました。新しい招待リンクをメンバーに送ってください。", true);
+          openGroup(current.gid, key, true);
+        } catch (e) { console.error(e); setMsg("rotMsg", "作り直せませんでした", false); }
+      };
+    }
+
+    // メンバー一覧（ニックネームだけ）
+    unsubs.push(onSnapshot(collection(db, "groups", current.gid, "members"), snap => {
+      members = {};
+      snap.forEach(d => { members[d.id] = d.data().nickname; });
+      $("members").innerHTML = Object.entries(members).map(([uid, n]) => `<span class="chip ${uid === me ? "me" : ""}">${esc(n)}</span>`).join("");
+      if (isOwner && $("mlist")) {
+        $("mlist").innerHTML = Object.entries(members).map(([uid, n]) => `<div class="mrow"><span>${esc(n)}${uid === me ? "（あなた）" : ""}</span>${uid === me ? "" : `<button class="btn small ghost" data-kick="${esc(uid)}">外す</button>`}</div>`).join("");
+        $("mlist").querySelectorAll("[data-kick]").forEach(b => b.onclick = () => deleteDoc(doc(db, "groups", current.gid, "members", b.dataset.kick)).catch(() => {}));
+      }
+    }, () => {}));
+
+    // タイムライン（新しい順・最大100件）
+    unsubs.push(onSnapshot(query(collection(db, "groups", current.gid, "posts"), orderBy("createdAt", "desc"), limit(100)), snap => {
+      const posts = []; snap.forEach(d => posts.push({ id: d.id, ...d.data() }));
+      drawFeed(posts);
+    }, err => { console.error(err); $("feed").innerHTML = `<p class="empty">読み込めませんでした。グループから外された可能性があります。</p>`; }));
+  }
+
+  let lastPosts = [];
+  function drawFeed(posts) {
+    lastPosts = posts;
+    const isOwner = current.owner === me;
+    $("feed").innerHTML = posts.length ? posts.map(p => {
+      const mine = p.uid === me;
+      const link = safeLink(p.link);
+      return `
+        <article class="post">
+          ${cover({ title: p.title, category: p.category, image: p.image })}
+          <div>
+            <div class="pk">${esc(cat(p.category).en)}<span>${esc(p.nickname)} · ${fmtTime(p.createdAt)}</span></div>
+            <h3>${esc(p.title)}</h3>
+            ${p.by ? `<div class="by">${esc(p.by)}</div>` : ""}
+            ${stars(p.rating)}
+            ${p.oneline ? `<p>${esc(p.oneline)}</p>` : ""}
+            <div class="ops">
+              ${link ? `<a class="listen" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(ctaLabel(p))} ↗</a>` : ""}
+              ${mine ? `<button data-edit="${esc(p.id)}">編集</button>` : ""}
+              ${mine || isOwner ? `<button data-del="${esc(p.id)}">削除</button>` : ""}
+            </div>
+          </div>
+        </article>`;
+    }).join("") : `<p class="empty">まだ投稿がありません。「＋ 投稿する」から、最初の1つをシェアしましょう。</p>`;
+    $("feed").querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openCompose(lastPosts.find(p => p.id === b.dataset.edit)));
+    $("feed").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+      if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "本当に削除？"; setTimeout(() => { b.classList.remove("armed"); b.textContent = "削除"; }, 4000); return; }
+      try { await deleteDoc(doc(db, "groups", current.gid, "posts", b.dataset.del)); } catch { b.textContent = "削除できませんでした"; }
+    });
+  }
+
+  // ===== 投稿フォーム =====
+  let draft = null;
+  function openCompose(post) {
+    draft = post ? { ...post } : { category: "音楽", title: "", by: "", oneline: "", link: "", image: "", rating: 4 };
+    const c = $("compose");
+    c.hidden = false;
+    c.innerHTML = `
+      <div class="src-tabs">
+        <button type="button" class="btn small" id="srcSong">🎵 曲を探す</button>
+        <button type="button" class="btn small ghost" id="srcMine">DAILY FIND の記事から選ぶ</button>
+      </div>
+      <input id="mq" type="search" enterkeyhint="search" placeholder="曲名やアーティスト名を入れる" autocomplete="off">
+      <div class="suggest" id="suggest" hidden></div>
+      <div class="picked"><div id="pv"></div><div class="note">候補を選ぶと、タイトル・ジャケット・リンクが入ります。曲以外は下に直接書いてください。</div></div>
+      <div class="row2">
+        <label>カテゴリ<select id="fCat">${Object.keys(CATS).map(k => `<option ${k === draft.category ? "selected" : ""}>${k}</option>`).join("")}</select></label>
+        <label>タイトル<input id="fTitle" maxlength="100" value="${esc(draft.title)}"></label>
+      </div>
+      <label>作者・アーティスト・場所など<input id="fBy" maxlength="100" value="${esc(draft.by)}"></label>
+      <label>ひとこと<input id="fOne" maxlength="200" value="${esc(draft.oneline)}" placeholder="例：夕日を見ながら聴きたい曲"></label>
+      <div class="lbl" role="group" aria-label="評価">評価<div class="rate" id="rate">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-n="${n}" aria-label="星${n}">★</button>`).join("")}</div></div>
+      <label>リンク（なくてもOK）<input id="fLink" type="url" maxlength="500" value="${esc(draft.link)}" placeholder="https://"></label>
+      <div class="actions"><button class="btn" id="post">${post ? "更新する" : "シェアする"}</button><button class="btn ghost" id="cancel" type="button">やめる</button><span class="msg" id="pMsg"></span></div>`;
+    const drawRate = () => c.querySelectorAll("#rate button").forEach(b => b.classList.toggle("on", +b.dataset.n <= draft.rating));
+    const drawPv = () => { $("pv").innerHTML = cover({ title: $("fTitle").value || "タイトル", category: $("fCat").value, image: draft.image }); };
+    $("rate").onclick = e => { const b = e.target.closest("button[data-n]"); if (b) { draft.rating = +b.dataset.n; drawRate(); } };
+    $("fTitle").oninput = drawPv; $("fCat").onchange = drawPv;
+    drawRate(); drawPv();
+    c.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // 曲を探す
+    let seq = 0, timer = null, results = [];
+    const sug = $("suggest");
+    const showResults = (list, footer) => {
+      results = list;
+      sug.hidden = false;
+      sug.innerHTML = list.length ? list.map((r, i) => `
+        <div class="s-item" data-i="${i}">${r.thumb ? `<img src="${esc(r.thumb)}" alt="">` : cover(r)}
+          <div><div class="s-t">${esc(r.title)}</div><div class="s-a">${esc(r.by || "")}</div></div></div>`).join("") + (footer ? `<div class="s-msg">${esc(footer)}</div>` : "")
+        : `<div class="s-msg">見つかりませんでした。</div>`;
+      sug.querySelectorAll(".s-item").forEach(el => el.onclick = () => {
+        const r = results[+el.dataset.i];
+        $("fTitle").value = r.title; $("fBy").value = r.by || ""; $("fCat").value = r.category || "音楽";
+        if (r.link) $("fLink").value = r.link;
+        if (r.oneline && !$("fOne").value) $("fOne").value = r.oneline;
+        if (r.rating) { draft.rating = r.rating; drawRate(); }
+        draft.image = r.image || ""; sug.hidden = true; $("mq").value = ""; drawPv();
+      });
+    };
+    const runSearch = async () => {
+      const q = $("mq").value.trim(); const my = ++seq;
+      if (!q) { sug.hidden = true; return; }
+      sug.hidden = false; sug.innerHTML = `<div class="s-msg">探しています…</div>`;
+      try { const r = await searchSongs(q); if (my === seq) showResults(r); }
+      catch { if (my === seq) sug.innerHTML = `<div class="s-msg">曲の検索につながりませんでした。</div>`; }
+    };
+    $("mq").addEventListener("input", e => { if (e.isComposing) return; clearTimeout(timer); timer = setTimeout(runSearch, 450); });
+    $("mq").addEventListener("compositionend", () => { clearTimeout(timer); timer = setTimeout(runSearch, 300); });
+    $("mq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); runSearch(); } });
+    $("srcSong").onclick = () => $("mq").focus();
+    $("srcMine").onclick = async () => {
+      try {
+        const res = await fetch("../picks.json?v=" + Date.now(), { cache: "no-store" });
+        const picks = (await res.json()).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        showResults(picks.map(p => ({
+          title: p.title, by: p.by, category: p.category, oneline: p.oneline, rating: p.rating,
+          link: safeLink(p.link),
+          image: /^images\/[\w.-]+$/.test(p.image || "") ? `https://dailyfind.github.io/${p.image}` : (/^https:\/\//.test(p.image || "") ? p.image : ""),
+          thumb: /^images\/[\w.-]+$/.test(p.image || "") ? `../${p.image}` : (/^https:\/\//.test(p.image || "") ? p.image : ""),
+        })), "DAILY FIND の記事");
+      } catch { showResults([], ""); }
+    };
+
+    $("cancel").onclick = () => { c.hidden = true; c.innerHTML = ""; };
+    $("post").onclick = async () => {
+      const data = {
+        uid: me, nickname: current.nickname,
+        category: $("fCat").value, title: $("fTitle").value.trim(), by: $("fBy").value.trim(),
+        oneline: $("fOne").value.trim(), link: $("fLink").value.trim(),
+        image: /^https:\/\//.test(draft.image || "") ? draft.image : "", rating: draft.rating | 0,
+      };
+      if (!data.title) return setMsg("pMsg", "タイトルを入れてください。", false);
+      if (data.link && !/^https:\/\//i.test(data.link)) return setMsg("pMsg", "リンクは https:// から始まるアドレスにしてください。", false);
+      $("post").disabled = true; setMsg("pMsg", "シェアしています…", true);
+      try {
+        if (post) await setDoc(doc(db, "groups", current.gid, "posts", post.id), { ...data, nickname: post.nickname, createdAt: post.createdAt, updatedAt: serverTimestamp() });
+        else await addDoc(collection(db, "groups", current.gid, "posts"), { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        c.hidden = true; c.innerHTML = "";
+      } catch (e) { console.error(e); setMsg("pMsg", "シェアできませんでした。少し待ってからもう一度押してください。", false); $("post").disabled = false; }
+    };
+  }
+
+  // ===== 曲の検索（書く画面と同じ仕組み。外部のプログラムは隔離した枠でだけ動かす） =====
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const appleSearchUrl = (t, a) => "https://music.apple.com/jp/search?term=" + encodeURIComponent(`${t} ${a}`.trim());
+  const s = v => (typeof v === "string" ? v : "");
+  const https = u => (/^https:\/\//i.test(s(u)) ? s(u) : "");
+  let frame = null, frameReady = null; const pending = new Map();
+  function sandbox() {
+    if (frameReady) return frameReady;
+    frameReady = new Promise(ok => {
+      frame = document.createElement("iframe"); frame.setAttribute("sandbox", "allow-scripts"); frame.hidden = true;
+      frame.srcdoc = `<script>addEventListener("message", e => { const { id, url } = e.data || {};
+        if (typeof url !== "string" || !/^https:\\/\\/api\\.deezer\\.com\\/search\\?/.test(url)) return;
+        const cb = "cb" + String(id).replace(/\\W/g, ""); const sc = document.createElement("script");
+        window[cb] = d => { parent.postMessage({ id, data: JSON.parse(JSON.stringify(d)) }, "*"); sc.remove(); };
+        sc.onerror = () => parent.postMessage({ id, error: true }, "*"); sc.src = url + "&callback=" + cb; document.body.appendChild(sc); });<\/script>`;
+      frame.onload = () => ok(frame); document.body.append(frame);
+    });
+    return frameReady;
+  }
+  addEventListener("message", e => {
+    if (!frame || e.source !== frame.contentWindow) return;
+    const p = pending.get(e.data && e.data.id); if (!p) return; pending.delete(e.data.id);
+    e.data.error ? p.reject(new Error("net")) : p.resolve(e.data.data);
+  });
+  async function deezer(term) {
+    const f = await sandbox(); const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const data = await new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject }); setTimeout(() => { if (pending.delete(id)) reject(new Error("timeout")); }, 8000);
+      f.contentWindow.postMessage({ id, url: "https://api.deezer.com/search?" + new URLSearchParams({ q: term, limit: 12, output: "jsonp" }) }, "*");
+    });
+    return (Array.isArray(data && data.data) ? data.data : []).map(t => ({
+      title: s(t.title), by: s(t.artist && t.artist.name), category: "音楽",
+      thumb: https(t.album && t.album.cover_medium), image: https(t.album && t.album.cover_xl),
+      link: appleSearchUrl(s(t.title), s(t.artist && t.artist.name)),
+    }));
+  }
+  async function apple(term) {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch("https://itunes.apple.com/search?" + new URLSearchParams({ term, country: "JP", media: "music", entity: "song", limit: 12, lang: "ja_jp" }), { signal: ctrl.signal });
+    clearTimeout(t); if (!res.ok) throw new Error("apple");
+    const d = await res.json();
+    return (Array.isArray(d.results) ? d.results : []).map(x => ({
+      title: s(x.trackName), by: s(x.artistName), category: "音楽",
+      thumb: https(x.artworkUrl100), image: https(s(x.artworkUrl100).replace("100x100bb", "600x600bb")), link: https(x.trackViewUrl),
+    }));
+  }
+  async function searchSongs(q) {
+    if (!isIOS) { try { return await apple(q); } catch {} }
+    return deezer(q);
+  }
+</script>
+</body>
+</html>

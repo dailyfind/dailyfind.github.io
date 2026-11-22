@@ -218,7 +218,7 @@ def main():
 
     # robots.txt（書く画面は検索に出さない）
     (OUT / "robots.txt").write_text(
-        f"User-agent: *\nDisallow: /write.html\nSitemap: {SITE}/sitemap.xml\n", encoding="utf-8")
+        f"User-agent: *\nDisallow: /write.html\nDisallow: /friends/\nSitemap: {SITE}/sitemap.xml\n", encoding="utf-8")
 
     print(f"built {len(numbered)} pages into {OUT}")
 
