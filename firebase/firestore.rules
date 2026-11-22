@@ -168,7 +168,8 @@ service cloud.firestore {
     // priv=true（非公開アカウントの投稿）は、本人と承認されたフォロワーと管理者だけが見られる
     match /pubposts/{pid} {
       function canSee() {
-        return resource.data.get('priv', false) == false
+        // get() の既定値を使うと一覧の読み込みで素通りになるので、priv は必ず実際の値で比べる
+        return resource.data.priv == false
           || (signedIn() && resource.data.uid == request.auth.uid) || approvedFollower(resource.data.uid);
       }
       allow read: if canSee() || isAdmin();

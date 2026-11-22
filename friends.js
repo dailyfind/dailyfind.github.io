@@ -792,7 +792,7 @@ async function openCompose(post, target, after) {
   if (!post && !draft.category) {
     c.innerHTML = `
       <h2 class="cmp-h">何をシェアする？</h2>
-      <div class="catpick">${Object.keys(CATS).map(k => `<button type="button" data-cat="${k}"><span class="ce">${CAT_EMOJI[k] || "✨"}</span><b>${k}</b></button>`).join("")}</div>
+      <div class="catpick">${CAT_ORDER.map(k => `<button type="button" data-cat="${k}"><span class="ce">${CAT_EMOJI[k] || "✨"}</span><b>${k}</b></button>`).join("")}</div>
       <div class="actions"><button class="btn ghost small" id="cancel" type="button">やめる</button></div>`;
     c.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { draft.category = b.dataset.cat; drawForm(); });
     $("cancel").onclick = () => { c.hidden = true; c.innerHTML = ""; };
@@ -808,7 +808,7 @@ async function openCompose(post, target, after) {
   c.innerHTML = `
     ${post ? `<p class="note">${target.kind === "pub" ? "🌐 公開の投稿" : "👥 " + esc(target.gname || "グループ") + " への投稿"}を編集しています</p>`
       : `<label>投稿先<select id="fTo"><option value="pub">🌐 公開（${myProfile && myProfile.private ? "🔒 非公開アカウントなので、承認したフォロワーだけ" : "誰でも見られる・「見つける」に載る"}）</option>${groups.map(g => `<option value="${esc(g.gid)}" ${target.kind === "group" && target.gid === g.gid ? "selected" : ""}>👥 ${esc(g.name)}（グループの人だけ）</option>`).join("")}</select></label>`}
-    <div class="catrow">${Object.keys(CATS).map(k => `<button type="button" data-cat="${k}" class="${k === draft.category ? "on" : ""}">${CAT_EMOJI[k] || ""} ${k}</button>`).join("")}</div>
+    <div class="catrow">${CAT_ORDER.map(k => `<button type="button" data-cat="${k}" class="${k === draft.category ? "on" : ""}">${CAT_EMOJI[k] || ""} ${k}</button>`).join("")}</div>
     ${isMusic ? `<input id="mq" type="search" enterkeyhint="search" placeholder="🎵 曲名やアーティスト名で探す" autocomplete="off">` : ""}
     <div class="suggest" id="suggest" hidden></div>
     <div class="picked"><div id="pv"></div><div class="note">${isMusic ? "曲名を入れて候補から選ぶと、タイトル・ジャケット・リンクが自動で入ります。" : `下に${esc(H.title)}などを書いてください。`}<br><button type="button" class="txt" id="srcMine">DAILY FIND の記事から選ぶ</button></div></div>
@@ -916,6 +916,7 @@ async function openCompose(post, target, after) {
 }
 
 // カテゴリごとの絵文字と、入力欄の言葉
+const CAT_ORDER = ["音楽", "本", "映画", "お店", "アニメ", "ゲーム", "その他"];   // 音楽を一番最初に
 const CAT_EMOJI = { "音楽": "🎵", "本": "📚", "映画": "🎬", "お店": "🍽️", "アニメ": "📺", "ゲーム": "🎮", "その他": "✨" };
 const CAT_HINT = {
   "音楽": { title: "曲名", tph: "例：BLOW", by: "アーティスト", bph: "例：Ed Sheeran", oph: "例：夕日を見ながら聴きたい曲", lph: "Apple Music や YouTube のリンク（なくてもOK）" },
