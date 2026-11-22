@@ -142,20 +142,19 @@ async function hydrate() {
 }
 // Apple Music の「曲そのもの」のリンク。サイトを作るとき（GitHub）に調べた表 applelinks.json を使い、
 // 「聴く」ボタンが Apple Music の検索になっているものを、曲のページに置きかえる（iPhone では検索の仕組みが使えないため）
-// Spotify も同じ（GitHub に Spotify の鍵を登録してあるときだけ表に入る）。表は musiclinks.json：{ 曲のキー: { apple, spotify } }
+// 表は musiclinks.json：{ 曲のキー: { apple } }（ほかのアプリを足すときは LINK_OK にも足す）
 let linkMap = null;
 const songKey = s => String(s || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 fetch("musiclinks.json?h=" + Math.floor(Date.now() / 3600000), { cache: "no-store" })
   .then(r => (r.ok ? r.json() : {})).catch(() => ({})).then(m => { linkMap = m && typeof m === "object" ? m : {}; upgradeLinks(); });
-const LINK_OK = { apple: /^https:\/\/music\.apple\.com\/[a-z]{2}\/(album|song)\//, spotify: /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/ };
+const LINK_OK = { apple: /^https:\/\/music\.apple\.com\/[a-z]{2}\/(album|song)\// };
 function upgradeLinks() {
   if (!linkMap) return;
-  document.querySelectorAll('a[data-music-app="apple"]:not([data-up]), a[data-music-app="spotify"]:not([data-up])').forEach(a => {
+  document.querySelectorAll('a[data-music-app="apple"]:not([data-up])').forEach(a => {
     a.dataset.up = "1";
     const app = a.dataset.musicApp;
     let u, term = ""; try { u = new URL(a.href); } catch { return; }
-    if (app === "apple" && u.hostname === "music.apple.com" && u.pathname.endsWith("/search")) term = u.searchParams.get("term");
-    if (app === "spotify" && u.hostname === "open.spotify.com" && u.pathname.startsWith("/search/")) term = decodeURIComponent(u.pathname.slice(8));
+    if (u.hostname === "music.apple.com" && u.pathname.endsWith("/search")) term = u.searchParams.get("term");
     const url = term && linkMap[songKey(term)] && linkMap[songKey(term)][app];
     if (typeof url === "string" && LINK_OK[app].test(url)) a.href = url;
   });

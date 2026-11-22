@@ -82,19 +82,18 @@ def cta(p):
 
 
 def music_links(p):
-    """Apple Music / Spotify / LINE MUSIC / YouTube Music のリンク（曲のリンクがあればそれ、なければ検索）"""
+    """Apple Music / LINE MUSIC / YouTube Music のリンク（曲のリンクがあればそれ、なければ検索）"""
     from urllib.parse import quote, urlparse
     q = quote(f"{p.get('title', '')} {p.get('by', '')}".strip())
     link = safe_link(p.get("link"))
     host = urlparse(link).hostname or ""
     apps = [
         ("Apple Music", ("music.apple.com", "itunes.apple.com"), f"https://music.apple.com/jp/search?term={q}"),
-        ("Spotify", ("spotify.com",), f"https://open.spotify.com/search/{q}"),
         ("LINE MUSIC", ("music.line.me",), f"https://music.line.me/webapp/search?query={q}"),
         ("YouTube Music", ("youtube.com", "youtu.be"), f"https://music.youtube.com/search?q={q}"),
     ]
-    found = p.get("_links") or {}   # GitHub で調べた曲のリンク（Apple Music / Spotify）
-    found = {"Apple Music": found.get("apple"), "Spotify": found.get("spotify")}
+    found = p.get("_links") or {}   # GitHub で調べた曲のリンク（Apple Music）
+    found = {"Apple Music": found.get("apple")}
     return [(name, link if link and any(host == h or host.endswith("." + h) for h in hosts) else (found.get(name) or url)) for name, hosts, url in apps]
 
 
@@ -200,58 +199,11 @@ def resolve(name, wanted, finder, wait):
     return {k: v for k, v in cache.items() if v}
 
 
-# ===== Spotify の「曲そのもの」のリンクを調べる =====
-# Spotify の開発者用の鍵（GitHub の Secrets に SPOTIFY_CLIENT_ID と SPOTIFY_CLIENT_SECRET）があるときだけ動く。
-# 鍵はサイトには出さず、GitHub のサーバーの中でだけ使う。
-SPOTIFY_TRACK = re.compile(r"^https://open\.spotify\.com/track/[A-Za-z0-9]+$")
-_spotify_token = None
-
-
-def spotify_token():
-    global _spotify_token
-    if _spotify_token is None:
-        import base64
-        import os
-        cid, secret = os.environ.get("SPOTIFY_CLIENT_ID", ""), os.environ.get("SPOTIFY_CLIENT_SECRET", "")
-        if not cid or not secret:
-            _spotify_token = ""
-        else:
-            auth = base64.b64encode(f"{cid}:{secret}".encode()).decode()
-            req = urllib.request.Request("https://accounts.spotify.com/api/token", data=b"grant_type=client_credentials",
-                                         headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"})
-            try:
-                with urllib.request.urlopen(req, timeout=15) as r:
-                    _spotify_token = json.loads(r.read().decode("utf-8")).get("access_token", "")
-            except Exception as ex:
-                print(f"spotify token failed: {ex}")
-                _spotify_token = ""
-    return _spotify_token
-
-
-def find_spotify(title, by):
-    q = urllib.parse.urlencode({"q": f"{title} {by}".strip(), "type": "track", "market": "JP", "limit": "5"})
-    req = urllib.request.Request("https://api.spotify.com/v1/search?" + q, headers={"Authorization": f"Bearer {spotify_token()}"})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        items = json.loads(r.read().decode("utf-8")).get("tracks", {}).get("items", [])
-    t = song_key(title, "")
-    def score(it):
-        name = song_key(it.get("name"), "")
-        extra = 1 if re.search(r"live|ライブ|version|remix|instrumental|karaoke", name) and not re.search(r"live|ライブ|version|remix", t) else 0
-        return (0 if name == t else 1 if name.startswith(t[:12]) else 2) * 2 + extra
-    best = min(items, key=score) if items else None
-    url = (best or {}).get("external_urls", {}).get("spotify", "")
-    return url if SPOTIFY_TRACK.match(url) else ""
-
-
 def resolve_links(picks):
-    """{曲のキー: {"apple": 曲のリンク, "spotify": 曲のリンク}} を返す"""
+    """{曲のキー: {"apple": 曲のリンク}} を返す（ほかのアプリを足すときはここに増やす）"""
     wanted = collect_songs(picks)
     apple = resolve("applelinks", wanted, find_apple, 3.2)
-    spotify = resolve("spotifylinks", wanted, find_spotify, 0.3) if spotify_token() else {}
-    out = {}
-    for k in set(apple) | set(spotify):
-        out[k] = {s: v for s, v in (("apple", apple.get(k)), ("spotify", spotify.get(k))) if v}
-    return out, apple
+    return {k: {"apple": v} for k, v in apple.items()}, apple
 
 def stars(n):
     n = max(0, min(5, int(n or 0)))

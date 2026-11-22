@@ -23,12 +23,11 @@ function ctaLabel(p) {
   return (svc && p.category === "音楽" ? svc + " で" : "") + cat(p.category).cta;
 }
 
-// ===== 音楽アプリ（Apple Music / Spotify / LINE MUSIC / YouTube Music） =====
+// ===== 音楽アプリ（Apple Music / LINE MUSIC / YouTube Music） =====
 // 曲そのもののリンクがあればそれを使い、ほかのアプリは「曲名＋アーティスト」で検索するリンクにする。
 // 最後に選んだアプリを覚えて、次から一番目に出す（この端末だけ）。
 const MUSIC_APPS = [
   { id: "apple",   name: "Apple Music",   host: /(^|\.)music\.apple\.com$|(^|\.)itunes\.apple\.com$/, search: q => `https://music.apple.com/jp/search?term=${q}` },
-  { id: "spotify", name: "Spotify",       host: /(^|\.)spotify\.com$/,                               search: q => `https://open.spotify.com/search/${q}` },
   { id: "line",    name: "LINE MUSIC",    host: /(^|\.)music\.line\.me$/,                            search: q => `https://music.line.me/webapp/search?query=${q}` },
   { id: "ytm",     name: "YouTube Music", host: /(^|\.)youtube\.com$|(^|\.)youtu\.be$/,             search: q => `https://music.youtube.com/search?q=${q}` },
 ];
