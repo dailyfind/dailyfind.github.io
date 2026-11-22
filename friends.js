@@ -224,7 +224,7 @@ async function hydrate() {
 let linkMap = null;
 const songKey = s => String(s || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 fetch("musiclinks.json?h=" + Math.floor(Date.now() / 3600000), { cache: "no-store" })
-  .then(r => (r.ok ? r.json() : {})).catch(() => ({})).then(m => { linkMap = m && typeof m === "object" ? m : {}; upgradeLinks(); });
+  .then(r => (r.ok ? r.json() : {})).catch(() => ({})).then(m => { linkMap = m && typeof m === "object" ? m : {}; window.DF_MUSICLINKS = linkMap; upgradeLinks(); });
 const LINK_OK = { apple: /^https:\/\/music\.apple\.com\/[a-z]{2}\/(album|song)\// };
 function upgradeLinks() {
   if (!linkMap) return;
@@ -587,7 +587,8 @@ function bindPasteJoin() {
 function whoHtml(prefix) {
   if (myProfile) return `<div class="lbl">あなた<div class="me-mini">${bigAv(myProfile)}<b>${esc(myProfile.nickname)}</b></div><span class="note">名前やアイコンは「マイページ」でいつでも変えられます。</span></div>`;
   return `<label>あなたのニックネーム<input id="${prefix}Nick" maxlength="20" placeholder="例：みさき" autocomplete="nickname"></label>
-    <div class="lbl">あなたのアイコン（写真はあとで「マイページ」から選べます） ${pickerHtml(prefix + "Pick", whoDraft)}</div>`;
+    <div class="lbl">あなたのアイコン（写真はあとで「マイページ」から選べます） ${pickerHtml(prefix + "Pick", whoDraft)}</div>
+    <p class="note">💡 先に「<a href="#me">マイページ</a>」で <b>Google で始める</b> をしておくと、ホーム画面のアイコンや別のスマホでも、同じ自分のままグループを使えます（前に Google で使っていた人もこちらから）。</p>`;
 }
 let whoDraft = null;
 function readWho(prefix) {
@@ -844,7 +845,7 @@ async function openCompose(post, target, after) {
     results = list; sug.hidden = false;
     sug.innerHTML = list.length ? list.map((r, i) => `<div class="s-item" data-i="${i}">${r.thumb ? `<img src="${esc(r.thumb)}" alt="">` : cover(r)}
       <div><div class="s-t">${esc(r.title)}</div><div class="s-a">${esc(r.by || "")}</div></div></div>`).join("") + (footer ? `<div class="s-msg">${esc(footer)}</div>` : "")
-      : `<div class="s-msg">見つかりませんでした。</div>`;
+      : `<div class="s-msg">見つかりませんでした。曲名だけ・アーティスト名だけで探すと見つかることがあります。<br>見つからないときは、下の欄に曲名とアーティストを直接書いてもシェアできます。</div>`;
     sug.querySelectorAll(".s-item").forEach(el => el.onclick = () => {
       const r = results[+el.dataset.i];
       $("fTitle").value = r.title; $("fBy").value = r.by || "";
@@ -862,7 +863,7 @@ async function openCompose(post, target, after) {
     const q = $("mq").value.trim(); const my = ++seq;
     if (!q) { sug.hidden = true; return; }
     sug.hidden = false; sug.innerHTML = `<div class="s-msg">探しています…</div>`;
-    try { const r = await searchSongs(q); if (my === seq) showResults(r); } catch { if (my === seq) sug.innerHTML = `<div class="s-msg">曲の検索につながりませんでした。</div>`; }
+    try { const r = await searchSongs(q); if (my === seq) showResults(r, r.length ? `${r.length}曲見つかりました。ないときは、下の欄に直接書いてもOKです。` : ""); } catch { if (my === seq) sug.innerHTML = `<div class="s-msg">曲の検索につながりませんでした。</div>`; }
   };
   if ($("mq")) {
     $("mq").addEventListener("input", e => { if (e.isComposing) return; clearTimeout(timer); timer = setTimeout(runSearch, 450); });
@@ -1039,16 +1040,25 @@ async function meView() {
   try { await ensureAuth(); await loadMyProfile(true); } catch { root.innerHTML = `<p class="empty">つながりませんでした。通信状況を確認して、開き直してください。</p>`; return; }
   if (!myProfile) {
     const cur = profDraft(null);
-    root.innerHTML = `
-      <div class="panel acct" style="margin-bottom:20px">
-        <h2>🔑 前に DAILY FIND を使っていた人</h2>
-        <p>マイページを Google とつないでいた人は、Google でログインすると、そのマイページ・グループ・フォローに戻れます（Safari で作ったマイページを、ホーム画面のアイコンで使いたいときも）。</p>
-        <div class="actions"><button class="btn gbtn" id="gLogin">${G_LOGO}Google でログイン</button><span class="msg" id="gLoginMsg"></span></div>
-      </div>
-      <div class="panel"><h2>はじめての人：マイページを作りましょう</h2>
-      <p>ニックネームと写真（なくてもOK）を決めると、投稿したり、気になる人をフォローしたりできます。メールアドレスもパスワードも要りません。</p>${profileEditorHtml(cur)}</div>`;
+    const linked = googleEmail();
+    root.innerHTML = linked
+      // Google でログインしたばかりの人：次はニックネームを決める
+      ? `<div class="panel acct" style="margin-bottom:20px"><h2>✅ Google とつながりました</h2>
+           <p><b>${esc(linked)}</b> でログインしています。次に、みんなに表示されるニックネームとアイコンを決めましょう（Google の名前や写真は表示されません）。</p></div>
+         <div class="panel"><h2>マイページを作る</h2>${profileEditorHtml(cur)}</div>`
+      // はじめての人：まず Google で始める（おすすめ）。Google なしでも始められる
+      : `<div class="panel acct start">
+           <h2>👋 DAILY FIND を始めよう</h2>
+           <p><b>Google で始めるのがおすすめ</b>です。ホーム画面のアイコン・別のスマホ・機種変更のあとでも、Google でログインするだけで、同じマイページ・グループ・フォローに戻れます。</p>
+           <p>前に Google で使っていた人も、このボタンで元のマイページに戻れます。</p>
+           <div class="actions"><button class="btn gbtn" id="gStart">${G_LOGO}Google で始める</button><span class="msg" id="gStartMsg"></span></div>
+           <p class="note">Google のメールアドレス・名前・写真は、サイトの管理者だけに伝わります（ほかの人には見えません。サイトにも表示されません）。</p>
+           <details class="noG"><summary>Google を使わずに始める</summary>
+             <p class="note">メールもパスワードも使わずに始められます。ただし、このスマホのこのブラウザだけに結びつくので、ホーム画面のアイコンや別のスマホでは別の人になります（あとからマイページで Google とつなぐこともできます）。</p>
+             ${profileEditorHtml(cur)}</details>
+         </div>`;
     bindProfileEditor(cur, meView);
-    $("gLogin").onclick = () => loginGoogle("gLoginMsg");
+    if ($("gStart")) $("gStart").onclick = () => loginGoogle("gStartMsg");
     return;
   }
   let followAll = [], followerAll = [], myPosts = [];
@@ -1070,15 +1080,17 @@ async function meView() {
     <div id="mbody"></div>
     <section class="panel acct" style="margin-top:36px">${googleEmail()
       ? `<h2>✅ Google とつながっています</h2>
-         <p><b>${esc(googleEmail())}</b> とつながっています。ホーム画面のアイコンや別のスマホでも、マイページの「Google でログイン」を押せば、このマイページ・グループ・フォローに戻れます。</p>`
+         <p><b>${esc(googleEmail())}</b> とつながっています。ホーム画面のアイコンや別のスマホでも、マイページの「Google で始める」を押せば、このマイページ・グループ・フォローに戻れます。</p>`
       : `<h2>🔐 引き継げるようにしておく（おすすめ）</h2>
          <p>いまのマイページは、<b>このスマホのこのブラウザだけ</b>に結びついています。iPhone では Safari とホーム画面のアイコンでも別の人になり、スマホを変えたりブラウザのデータを消したりすると元に戻れません。</p>
-         <p>Google とつないでおくと、どこでも「Google でログイン」するだけで、このマイページ・グループ・フォローに戻れます。</p>
+         <p>Google とつないでおくと、ホーム画面のアイコンや別のスマホで「マイページ」→「Google で始める」を押すだけで、このマイページ・グループ・フォローに戻れます。</p>
          <div class="actions"><button class="btn gbtn" id="gLink">${G_LOGO}Google とつなぐ</button><span class="msg" id="gLinkMsg"></span></div>
          <p class="note">つなぐと、Google のメールアドレス・名前・写真がサイトの管理者に伝わります（ほかの人には見えません。サイトにも表示されません）。つながなくても、今までどおり使えます。</p>`}
     </section>
     <button class="fab" id="fab" aria-label="投稿する">＋</button>`;
   if ($("gLink")) $("gLink").onclick = async () => { if (await linkGoogle("gLinkMsg")) meView(); };
+  // まだ Google とつないでいない人には、引き継ぎの案内をページの上の方に出す（つないだ人は一番下に）
+  if (!googleEmail()) { const ac = root.querySelector("section.acct"), act = root.querySelector(".me-head + .actions"); if (ac && act) { ac.style.margin = "16px 0 0"; act.after(ac); } }
   const tabsOn = () => root.querySelectorAll(".tabs2 button").forEach(x => x.classList.toggle("on", x.dataset.t === meTab));
   root.querySelectorAll(".tabs2 button, .counts button").forEach(b => b.onclick = () => { meTab = b.dataset.t; tabsOn(); drawMe(); });
   $("newBtn").onclick = $("fab").onclick = () => openCompose(null, { kind: "pub" }, meView);
@@ -1282,6 +1294,17 @@ async function fillHome() {
     } catch {}
   }
   if (gen !== homeGen || !$("hxCards")) return;   // 読み込み中に画面が変わった
+  // マイページはあるのに Google とつないでいない人へ：引き継げるようにしておく案内（×で閉じたら出さない）
+  if (hasMe && auth.currentUser && auth.currentUser.isAnonymous) {
+    let off = false; try { off = localStorage.getItem("df_gnudge") === "1"; } catch {}
+    if (!off && await loadMyProfile().catch(() => null) && gen === homeGen && $("homeExtras")) {
+      const card = document.createElement("div"); card.className = "gnudge";
+      card.innerHTML = `<div><b>🔐 Google とつないでおきましょう</b><p>今のマイページは、このブラウザだけに結びついています。つないでおくと、ホーム画面のアイコンや機種変更のあとも同じマイページ・グループに戻れます。</p>
+        <a class="btn small gbtn" href="#me">${G_LOGO}マイページでつなぐ</a></div><button type="button" aria-label="閉じる">×</button>`;
+      $("homeExtras").prepend(card);
+      card.querySelector("button").onclick = () => { card.remove(); try { localStorage.setItem("df_gnudge", "1"); } catch {} };
+    }
+  }
   if (!sources) {
     $("hxTitle").textContent = "New Picks"; $("hxSub").textContent = "みんなの新着のおすすめ";
     watch("pub", query(collection(db, "pubposts"), where("priv", "==", false), orderBy("createdAt", "desc"), limit(6)), { kind: "pub" });
@@ -1510,20 +1533,35 @@ async function deezer(term) {
   const f = await sandbox(); const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
   const data = await new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject }); setTimeout(() => { if (pending.delete(id)) reject(new Error("timeout")); }, 8000);
-    f.contentWindow.postMessage({ id, url: "https://api.deezer.com/search?" + new URLSearchParams({ q: term, limit: 12, output: "jsonp" }) }, "*");
+    f.contentWindow.postMessage({ id, url: "https://api.deezer.com/search?" + new URLSearchParams({ q: term, limit: 30, output: "jsonp" }) }, "*");
   });
   return (Array.isArray(data && data.data) ? data.data : []).map(t => ({ title: s(t.title), by: s(t.artist && t.artist.name), category: "音楽",
     thumb: https(t.album && t.album.cover_medium), image: https(t.album && t.album.cover_xl), link: appleSearchUrl(s(t.title), s(t.artist && t.artist.name)) }));
 }
 async function apple(term) {
   const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 5000);
-  const res = await fetch("https://itunes.apple.com/search?" + new URLSearchParams({ term, country: "JP", media: "music", entity: "song", limit: 12, lang: "ja_jp" }), { signal: ctrl.signal });
+  const res = await fetch("https://itunes.apple.com/search?" + new URLSearchParams({ term, country: "JP", media: "music", entity: "song", limit: 30, lang: "ja_jp" }), { signal: ctrl.signal });
   clearTimeout(t); if (!res.ok) throw new Error("apple");
   const d = await res.json();
   return (Array.isArray(d.results) ? d.results : []).map(x => ({ title: s(x.trackName), by: s(x.artistName), category: "音楽",
     thumb: https(x.artworkUrl100), image: https(s(x.artworkUrl100).replace("100x100bb", "600x600bb")), link: https(x.trackViewUrl) }));
 }
-async function searchSongs(q) { if (!isIOS) { try { return await apple(q); } catch {} } return deezer(q); }
+// 曲を探す：パソコン・Android は Apple Music と Deezer の両方で探してまとめる（見つかる曲を増やすため）。
+// iPhone は Apple の検索の仕組みが使えないので Deezer だけ
+async function searchSongs(q) {
+  const tries = isIOS ? [deezer(q)] : [apple(q), deezer(q)];
+  const res = await Promise.allSettled(tries);
+  const seen = new Set(), out = [];
+  for (const r of res) {
+    if (r.status !== "fulfilled") continue;
+    for (const s of r.value) {
+      const k = String(`${s.title}|${s.by}`).normalize("NFKC").toLowerCase().replace(/\s+|[(（].*?[)）]/g, "");
+      if (seen.has(k)) continue; seen.add(k); out.push(s);
+    }
+  }
+  if (!out.length && res.every(r => r.status === "rejected")) throw new Error("search");
+  return out.slice(0, 40);
+}
 
 // ===== 読み込み時：今の画面に合わせて動く =====
 window.DF_READY = true;

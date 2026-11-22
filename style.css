@@ -83,6 +83,7 @@ img { display: block; max-width: 100%; }
 .lmenu-pop a { padding: 9px 10px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 700; color: var(--ink); }
 .lmenu-pop a:hover { background: var(--card); }
 .lm-h, .lm-f { font-size: 11px; color: var(--muted); padding: 4px 10px; }
+.lmenu-pop a .srch { display: block; font-size: 10px; font-weight: 400; color: var(--muted); }
 
 /* ===== バックナンバー ===== */
 .section-head { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--rule); padding-top: 14px; margin-bottom: 26px; }

@@ -32,26 +32,51 @@ const MUSIC_APPS = [
   { id: "ytm",     name: "YouTube Music", host: /(^|\.)youtube\.com$|(^|\.)youtu\.be$/,             search: q => `https://music.youtube.com/search?q=${q}` },
 ];
 const getMusicApp = () => { try { return localStorage.getItem("df_music") || "apple"; } catch { return "apple"; } };
+// リンクのサービス名（投稿されたリンクを「○○で聴く」と出すため）
+const SVC_NAMES = [[/(^|\.)spotify\.com$/, "Spotify"], [/(^|\.)deezer\.com$/, "Deezer"], [/(^|\.)soundcloud\.com$/, "SoundCloud"],
+  [/(^|\.)youtube\.com$|(^|\.)youtu\.be$/, "YouTube"], [/(^|\.)music\.apple\.com$/, "Apple Music"], [/(^|\.)music\.line\.me$/, "LINE MUSIC"],
+  [/(^|\.)music\.amazon\.|(^|\.)amazon\./, "Amazon Music"], [/(^|\.)awa\.fm$/, "AWA"], [/(^|\.)tiktok\.com$/, "TikTok"], [/(^|\.)nicovideo\.jp$/, "ニコニコ"]];
+function svcName(url) {
+  try { const h = new URL(url).hostname; const m = SVC_NAMES.find(([re]) => re.test(h)); return m ? m[1] : h.replace(/^www\./, ""); } catch { return "リンク"; }
+}
+// それぞれのアプリのリンク。direct=true は「曲そのもの」、false は「曲名で検索」。
+// origin は、投稿されたリンクがどのアプリでもないとき（Spotify・SoundCloud など）のそのリンク
 function musicLinks(p) {
   const q = encodeURIComponent(`${p.title || ""} ${p.by || ""}`.trim());
-  let host = ""; try { host = new URL(p.link).hostname; } catch {}
-  const links = MUSIC_APPS.map(a => ({ id: a.id, name: a.name, url: (safeLink(p.link) && a.host.test(host)) ? safeLink(p.link) : a.search(q) }));
+  const link = safeLink(p.link);
+  let host = ""; try { host = new URL(link).hostname; } catch {}
+  const key = String(`${p.title || ""} ${p.by || ""}`).normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+  const known = (window.DF_MUSICLINKS && window.DF_MUSICLINKS[key]) || {};   // GitHub で調べた Apple Music の曲のリンク
+  const links = MUSIC_APPS.map(a => {
+    const direct = (link && a.host.test(host) && !/\/search(\?|\/|$)/.test(link)) ? link : (a.id === "apple" && known.apple) || "";
+    return { id: a.id, name: a.name, url: direct || a.search(q), direct: !!direct };
+  });
   const pref = getMusicApp();
-  return links.sort((a, b) => (b.id === pref) - (a.id === pref));
+  links.sort((a, b) => (b.id === pref) - (a.id === pref));
+  const origin = link && !MUSIC_APPS.some(a => a.host.test(host)) ? { id: "origin", name: svcName(link), url: link, direct: true } : null;
+  return { links, origin };
+}
+// 一番目に出すリンク：いつものアプリに曲そのものがあればそれ。なければ、曲そのものがある別のアプリ・投稿されたリンク。
+// どれもなければ、いつものアプリで曲名を検索
+function pickFirst({ links, origin }) {
+  const first = links[0].direct ? links[0] : (links.find(l => l.direct) || origin || links[0]);
+  const rest = [...links, ...(origin ? [origin] : [])].filter(l => l !== first);
+  return { first, rest };
 }
 // 曲の「聴く」ボタン。big=true は特集用の大きなボタン、false は一覧用の小さなボタン
 function listenHtml(p, big) {
-  const [first, ...rest] = musicLinks(p);
-  const a = (l, cls, label) => `<a class="${cls}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" data-music-app="${l.id}">${label}</a>`;
+  const { first, rest } = pickFirst(musicLinks(p));
+  const label = l => esc(l.id === "origin" ? `${l.name}（投稿されたリンク）` : l.name) + (l.direct ? "" : `<small class="srch">曲名で検索</small>`);
+  const a = (l, cls, text) => `<a class="${cls}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" data-music-app="${l.id}">${text}</a>`;
   if (big) return `${a(first, "more", `${esc(first.name)} で聴いてみる ↗`)}
     <div class="other-apps">ほかのアプリで聴く：${rest.map(l => a(l, "", esc(l.name))).join(" · ")}</div>`;
   return `<span class="listenbox">${a(first, "listen", `▶ 聴く`)}<details class="lmenu"><summary aria-label="ほかの音楽アプリで聴く">▾</summary>
-    <div class="lmenu-pop"><span class="lm-h">どのアプリで聴く？</span>${[first, ...rest].map(l => a(l, "", esc(l.name))).join("")}<span class="lm-f">選んだアプリが次から「聴く」になります。<br>曲のページが見つからないときは、曲名で検索した画面が開きます。</span></div></details></span>`;
+    <div class="lmenu-pop"><span class="lm-h">どのアプリで聴く？</span>${[first, ...rest].map(l => a(l, "", label(l))).join("")}<span class="lm-f">選んだアプリが次から「聴く」になります。<br>いつものアプリに曲が見つからないときは、曲があるアプリや投稿されたリンクを先に開きます。</span></div></details></span>`;
 }
-// どれかのアプリで開いたら、そのアプリを覚える
+// どれかのアプリで開いたら、そのアプリを覚える（投稿されたリンクは覚えない）
 document.addEventListener("click", e => {
   const el = e.target.closest && e.target.closest("[data-music-app]");
-  if (el) { try { localStorage.setItem("df_music", el.dataset.musicApp); } catch {} }
+  if (el && el.dataset.musicApp !== "origin") { try { localStorage.setItem("df_music", el.dataset.musicApp); } catch {} }
   // 開いているアプリ選択メニューは、外を押したら閉じる
   document.querySelectorAll("details.lmenu[open]").forEach(d => { if (!d.contains(e.target)) d.open = false; });
 });

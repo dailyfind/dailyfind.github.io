@@ -294,6 +294,14 @@ a.chip, .who a.u, .urow a { text-decoration: none; color: inherit; }
 .gbtn:hover { background: #f8f9fa; }
 .glogo { width: 18px; height: 18px; flex: none; }
 .acct h2 { font-size: 17px; }
+.acct.start { border: 2px solid var(--ink); }
+.noG { font-size: 14px; }
+.noG summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 6px 0; }
+.noG[open] summary { margin-bottom: 8px; }
+.noG .pedit { margin-top: 10px; }
+.gnudge { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; background: var(--card); border-radius: 12px; padding: 14px 14px 14px 16px; margin: 6px 0 30px; }
+.gnudge p { margin: 4px 0 10px; font-size: 13px; color: var(--muted); line-height: 1.7; }
+.gnudge > button { background: none; border: 0; font-size: 18px; color: var(--muted); cursor: pointer; padding: 0 4px; }
 
 /* グループの切り替え（横に並ぶボタン） */
 .gswitch { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--hair); }
