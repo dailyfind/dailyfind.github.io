@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#111111">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261122e">
-<link rel="stylesheet" href="friends.css?v=20261122e">
+<link rel="stylesheet" href="style.css?v=20261122f">
+<link rel="stylesheet" href="friends.css?v=20261122f">
 </head>
 <body>
 <div class="wrap">
@@ -32,7 +32,7 @@
 
   <nav class="mainnav" id="mainnav" aria-label="メニュー">
     <button data-go=""><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 4l8.5 6.5V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"/></svg><span>ホーム</span></button>
-    <button data-go="all"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 3.3 3 13.7 0 17M12 3.5c-3 3.3-3 13.7 0 17"/></svg><span>みんな</span></button>
+    <button data-go="all"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span>見つける</span></button>
     <button data-go="group"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c.6-3.8 3.1-6 6.5-6s5.9 2.2 6.5 6"/><circle cx="17" cy="9.5" r="2.6"/><path d="M16.5 14.2c2.7.2 4.4 2 5 5"/></svg><span>グループ</span></button>
     <button data-go="me"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.5 4-7 8-7s7.2 2.5 8 7"/></svg><span>マイページ</span></button>
     <button data-go="admin" id="navAdmin" hidden><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19.5 6v5.5c0 4.6-3.2 7.7-7.5 9-4.3-1.3-7.5-4.4-7.5-9V6z"/></svg><span>管理<span class="badge" id="navBadge" hidden></span></span></button>
@@ -64,7 +64,7 @@
   <footer><span>© <span id="year"></span> DAILY FIND</span><span><a href="#" id="introLink" style="text-decoration:none">❓ DAILY FIND とは</a><a href="#feedback" style="text-decoration:none">💬 意見を送る</a><a href="#" id="a2hsLink" style="text-decoration:none">📱 ホーム画面に追加する方法</a><span id="total"></span><a href="#admin" style="text-decoration:none;color:var(--muted)">管理者</a></span></footer>
 </div>
 
-<script src="common.js?v=20261122e"></script>
+<script src="common.js?v=20261122f"></script>
 <script>
   let picks = [];
   let filter = "ALL";
@@ -261,7 +261,7 @@
     route();
   })();
 
-  // ===== 画面の切り替え（おすすめ / グループ / みんなのプレイリスト / 管理） =====
+  // ===== 画面の切り替え（ホーム / 見つける / グループ / マイページ / 管理） =====
   const FRIENDS_VIEW = h => /^(g=|u=|group$|all$|me$|admin$|feedback$)/.test(h);
   const navOf = h => h.startsWith("g=") ? "group" : h.startsWith("u=") ? "all" : (FRIENDS_VIEW(h) ? h : "");
   let adminOn = false;
@@ -278,12 +278,22 @@
       else if (left < nav.scrollLeft) nav.scrollLeft = left;
     });
   }
+  // 画面を切り替えたら、新しい画面の先頭を見せる（下のほうでリンクを押しても、途中から始まらないように）
+  function scrollToView(friends) {
+    if (!friends) { window.scrollTo(0, 0); return; }
+    const nav = document.getElementById("mainnav"), navTop = getComputedStyle(nav).position === "sticky" ? nav.offsetHeight : 0;
+    const y = document.getElementById("fapp").getBoundingClientRect().top + window.scrollY - navTop;
+    window.scrollTo(0, Math.max(0, y));
+  }
+  let lastView = null;
   function route() {
     const h = location.hash.slice(1);
     const friends = FRIENDS_VIEW(h);
     document.getElementById("app").hidden = friends;
     document.getElementById("fapp").hidden = !friends;
     setNav(navOf(h));
+    if (lastView !== null && lastView !== h && (friends || !h)) requestAnimationFrame(() => scrollToView(friends));
+    lastView = h;
     if (friends) {
       window.dispatchEvent(new Event("df:leavehome"));
       if (window.DF_READY) window.dispatchEvent(new CustomEvent("df:view", { detail: h }));
@@ -294,15 +304,14 @@
   }
   document.querySelectorAll("#mainnav button").forEach(b => b.onclick = () => {
     const target = b.dataset.go ? "#" + b.dataset.go : "#";
-    if (location.hash === target || (!b.dataset.go && !location.hash)) route();
+    if (location.hash === target || (!b.dataset.go && !location.hash)) { route(); scrollToView(!!b.dataset.go); }
     else location.hash = target;
-    window.scrollTo(0, 0);
   });
   // ===== はじめての人への説明 =====
   (() => {
     const slides = [
       { icon: "👋", title: "DAILY FIND へようこそ", text: "<b>毎日ひとつ、いいもの</b>を見つける場所です。管理者が毎日、音楽・本・映画・お店などのおすすめを1つ紹介します。トップの「Today's Pick」が今日のおすすめです。" },
-      { icon: "👥", title: "友達とシェアしよう", text: "「<b>みんな</b>」に投稿すると誰でも見られます。気になる人は<b>フォロー</b>すると、その人の投稿が「フォロー中」にまとまります。<br>仲間内だけで話したいときは「<b>グループ</b>」へ。招待リンクを LINE で送るだけで、投稿は<b>メンバーだけ</b>に見えます。" },
+      { icon: "👥", title: "友達とシェアしよう", text: "投稿を「<b>公開</b>」にすると、誰でも「<b>見つける</b>」で見られます。気になる人は<b>フォロー</b>すると、その人の投稿が「フォロー中」にまとまります。<br>仲間内だけで話したいときは「<b>グループ</b>」へ。招待リンクを LINE で送るだけで、投稿は<b>メンバーだけ</b>に見えます。" },
       { icon: "🙂", title: "マイページ", text: "「<b>マイページ</b>」で、ニックネーム・<b>写真のアイコン</b>・自己紹介を決められます。自分の投稿、フォロー中、フォロワーもここで見られます。<br>メールアドレスもパスワードも要りません。シェアされた曲は「みんなのプレイリスト」にも並びます。" },
       { icon: "📱", title: "ホーム画面に追加しよう", text: "ホーム画面に追加すると、アプリみたいにすぐ開けます。やり方は、ページの上の案内か、いちばん下の「📱 ホーム画面に追加する方法」で見られます。<br>気づいたことは「<b>💬 意見を送る</b>」からいつでもどうぞ。" },
     ];
@@ -366,6 +375,6 @@
     friendsReady: () => { if (FRIENDS_VIEW(location.hash.slice(1))) route(); else if (picks.length && document.getElementById("homeExtras")) window.dispatchEvent(new Event("df:home")); },
   };
 </script>
-<script type="module" src="friends.js?v=20261122e"></script>
+<script type="module" src="friends.js?v=20261122f"></script>
 </body>
 </html>

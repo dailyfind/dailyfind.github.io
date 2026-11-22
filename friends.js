@@ -1,4 +1,4 @@
-// DAILY FIND：みんな・グループ・マイページ・管理（メインページの中で動く）
+// DAILY FIND：見つける・グループ・マイページ・管理（メインページの中で動く）
 // ・友達は匿名ログイン（メール・パスワード・名前は使わない）
 // ・プロフィール（ニックネーム・アイコン・写真・自己紹介）はサイト全体で1人1つ
 // ・管理者（サイトの持ち主）は Google ログイン。別の Firebase アプリ名で起動して、友達用のログインと混ざらないようにする
@@ -249,7 +249,7 @@ async function show(view) {
   return groupView();
 }
 
-// ===== 投稿の表示（グループの投稿・みんなへの投稿で共通） =====
+// ===== 投稿の表示（グループの投稿・公開の投稿で共通） =====
 // p._src = { kind: "pub" } または { kind: "group", gid, gname }
 const shown = new Map();
 const keyOf = p => `${p._src.kind}:${p._src.gid || ""}:${p.id}`;
@@ -260,7 +260,7 @@ const likedByMe = p => !!(me && p.likes && p.likes[me]);
 let members = {};   // 開いているグループのメンバー（いいねした人の名前用）
 const likersText = p => Object.keys(p.likes || {}).map(u => (members[u] && members[u].nickname) || "抜けた人").join("、");
 const likeBtn = p => { shown.set(keyOf(p), p); return `<button class="like ${likedByMe(p) ? "on" : ""}" data-like="${esc(keyOf(p))}" aria-pressed="${likedByMe(p)}"><span class="h">♥</span>${likeCount(p) || ""}</button>`; };
-const srcLabel = p => (p._src.kind === "pub" ? `<span class="src">🌐 みんな</span>` : `<span class="src">👥 ${esc(p._src.gname || "グループ")}</span>`);
+const srcLabel = p => (p._src.kind === "pub" ? `<span class="src">🌐 公開</span>` : `<span class="src">👥 ${esc(p._src.gname || "グループ")}</span>`);
 
 function postHtml(p, { canDelete = false, showSrc = false } = {}) {
   shown.set(keyOf(p), p);
@@ -523,7 +523,7 @@ function drawGroupBody() {
   bindPostOps(body);
 }
 
-// ===== 投稿フォーム（みんな・グループ共通） =====
+// ===== 投稿フォーム（公開・グループ共通） =====
 // target：{ kind: "pub" } か { kind: "group", gid, gname }。編集のときは post._src を使う
 async function openCompose(post, target, after) {
   const c = $("compose"); if (!c) return;
@@ -541,8 +541,8 @@ async function openCompose(post, target, after) {
   const draft = post ? { ...post } : { category: "音楽", title: "", by: "", oneline: "", link: "", image: "", rating: 4, public: true };
   const oneLabel = () => (target.kind === "pub" ? "ひとこと（誰でも見られます）" : "ひとこと（グループの人だけに見えます）");
   c.innerHTML = `
-    ${post ? `<p class="note">${target.kind === "pub" ? "🌐 みんなへの投稿" : "👥 " + esc(target.gname || "グループ") + " への投稿"}を編集しています</p>`
-      : `<label>投稿先<select id="fTo"><option value="pub">🌐 みんな（誰でも見られる）</option>${groups.map(g => `<option value="${esc(g.gid)}" ${target.kind === "group" && target.gid === g.gid ? "selected" : ""}>👥 ${esc(g.name)}（グループの人だけ）</option>`).join("")}</select></label>`}
+    ${post ? `<p class="note">${target.kind === "pub" ? "🌐 公開の投稿" : "👥 " + esc(target.gname || "グループ") + " への投稿"}を編集しています</p>`
+      : `<label>投稿先<select id="fTo"><option value="pub">🌐 公開（誰でも見られる・「見つける」に載る）</option>${groups.map(g => `<option value="${esc(g.gid)}" ${target.kind === "group" && target.gid === g.gid ? "selected" : ""}>👥 ${esc(g.name)}（グループの人だけ）</option>`).join("")}</select></label>`}
     <div class="actions"><button type="button" class="btn small" id="srcSong">🎵 曲を探す</button><button type="button" class="btn small ghost" id="srcMine">DAILY FIND の記事から選ぶ</button></div>
     <input id="mq" type="search" enterkeyhint="search" placeholder="曲名やアーティスト名を入れる" autocomplete="off">
     <div class="suggest" id="suggest" hidden></div>
@@ -631,13 +631,13 @@ async function openCompose(post, target, after) {
       }
       await batch.commit();
       c.hidden = true; c.innerHTML = "";
-      toast(post ? "更新しました" : (isPub ? "みんなにシェアしました！" : "グループにシェアしました！"));
+      toast(post ? "更新しました" : (isPub ? "公開しました！" : "グループにシェアしました！"));
       after && after(target);
     } catch (e) { console.error(e); setMsg("pMsg", "シェアできませんでした。少し待ってからもう一度押してください。", false); $("post").disabled = false; }
   };
 }
 
-// ===== みんな（新着・フォロー中・みんなのプレイリスト） =====
+// ===== 見つける（新着・フォロー中・みんなのプレイリスト） =====
 let allTab = "new", pubSort = "new";
 const songRow = (s, i, extra = "") => `
   <div class="tr"><span class="no">${String(i + 1).padStart(2, "0")}</span>${cover({ title: s.title, category: "音楽", image: s.image })}
@@ -646,7 +646,7 @@ const songRow = (s, i, extra = "") => `
 async function allView() {
   current = null;
   root.innerHTML = `
-    <div class="bar"><h2>みんな</h2><div class="actions"><button class="btn small" id="newBtn">＋ みんなに投稿</button></div></div>
+    <div class="bar"><h2>見つける</h2><div class="actions"><button class="btn small" id="newBtn">＋ 投稿する</button></div></div>
     <section class="compose" id="compose" hidden></section>
     <div class="tabs2"><button data-t="new">新着</button><button data-t="follow">フォロー中</button><button data-t="songs">みんなのプレイリスト</button></div>
     <div id="abody">${LOADING}</div>
@@ -666,7 +666,7 @@ function drawAll() {
     unsubs.push(onSnapshot(query(collection(db, "pubposts"), orderBy("createdAt", "desc"), limit(60)), snap => {
       const list = tag(snap.docs, { kind: "pub" });
       body.innerHTML = `<p class="note" style="margin:0 0 6px">誰でも見られる投稿です。名前を押すと、その人のページを見たりフォローしたりできます。</p>`
-        + (list.length ? list.map(p => postHtml(p)).join("") : `<p class="empty">まだ投稿がありません。「＋ みんなに投稿」から、最初の1つをシェアしましょう。</p>`);
+        + (list.length ? list.map(p => postHtml(p)).join("") : `<p class="empty">まだ投稿がありません。「＋ 投稿する」から、最初の1つをシェアしましょう。</p>`);
       bindPostOps(body);
     }, e => { console.error(e); body.innerHTML = `<p class="empty">読み込めませんでした。</p>`; }));
   } else if (allTab === "follow") {
@@ -686,7 +686,7 @@ function drawAll() {
     }, e => { console.error(e); if ($("pubList")) $("pubList").innerHTML = `<p class="empty">読み込めませんでした。</p>`; }));
   }
 }
-// フォローしている人の「みんなへの投稿」をまとめて出す
+// フォローしている人の「公開の投稿」をまとめて出す
 async function followFeed(body) {
   let tos = [];
   try { tos = await myFollowing(); } catch { body.innerHTML = `<p class="empty">読み込めませんでした。</p>`; return; }
@@ -703,7 +703,7 @@ async function followFeed(body) {
     e => { console.error(e); parts[i] = []; draw(); })));
 }
 
-// ===== ある人の投稿をまとめて読む（みんなへの投稿＋自分も入っているグループでの投稿） =====
+// ===== ある人の投稿をまとめて読む（公開の投稿＋自分も入っているグループでの投稿） =====
 async function loadPostsOf(uid) {
   const out = [];
   try { out.push(...tag((await getDocs(query(collection(db, "pubposts"), where("uid", "==", uid), limit(100)))).docs, { kind: "pub" })); } catch (e) { console.error(e); }
@@ -722,7 +722,7 @@ async function meView() {
   if (!myProfile) {
     const cur = profDraft(null);
     root.innerHTML = `<div class="panel"><h2>マイページを作りましょう</h2>
-      <p>写真やニックネームを決めると、みんなに投稿したり、気になる人をフォローしたりできます。メールアドレスもパスワードも要りません。</p>${profileEditorHtml(cur)}</div>`;
+      <p>写真やニックネームを決めると、投稿したり、気になる人をフォローしたりできます。メールアドレスもパスワードも要りません。</p>${profileEditorHtml(cur)}</div>`;
     bindProfileEditor(cur, meView);
     return;
   }
@@ -759,7 +759,7 @@ async function meView() {
       return;
     }
     const list = meTab === "following" ? following : followers;
-    if (!list.length) { body.innerHTML = `<p class="empty">${meTab === "following" ? "まだ誰もフォローしていません。「みんな」で気になる人の名前を押すと、フォローできます。" : "まだフォロワーはいません。"}</p>`; return; }
+    if (!list.length) { body.innerHTML = `<p class="empty">${meTab === "following" ? "まだ誰もフォローしていません。「見つける」で気になる人の名前を押すと、フォローできます。" : "まだフォロワーはいません。"}</p>`; return; }
     body.innerHTML = LOADING;
     await Promise.all(list.map(async u => { if (!(u in profs)) profs[u] = await getProfile(u); }));
     body.innerHTML = list.map(u => userRow(u, profs[u], followBtn(u, following.includes(u)))).join("");
@@ -804,7 +804,7 @@ async function userView(uid) {
 }
 
 // ===== トップページ：お知らせ＋友達のおすすめ =====
-let homeUnsubs = [];
+let homeUnsubs = [], homeGen = 0;   // homeGen：トップを描き直したら、前の読み込みは使わない
 const newsHtml = n => `
   <div class="news-item"><div class="nk">お知らせ<span>${esc(fmtTime(n.createdAt))}</span></div>
     <b>${esc(n.title)}</b>${n.body ? `<p>${esc(n.body)}</p>` : ""}${safeLink(n.link) ? `<a href="${esc(safeLink(n.link))}" target="_blank" rel="noopener noreferrer">くわしく見る ↗</a>` : ""}</div>`;
@@ -815,6 +815,7 @@ const hxCard = p => `
 
 async function fillHome() {
   homeUnsubs.forEach(u => u()); homeUnsubs = [];
+  const gen = ++homeGen;
   // 管理者からのお知らせ（新しい3件）
   homeUnsubs.push(onSnapshot(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(3)), snap => {
     const nb = $("homeNews"); if (!nb) return;
@@ -834,8 +835,7 @@ async function fillHome() {
     const list = sortNew(Object.values(parts).flat()).slice(0, 6);
     $("hxCards").innerHTML = list.length ? list.map(hxCard).join("") : `<p class="empty">まだ投稿がありません。</p>`;
   };
-  const watch = (name, q, src) => homeUnsubs.push(onSnapshot(q, snap => { parts[name] = tag(snap.docs, src); draw(); }, () => { parts[name] = []; draw(); }));
-  const started = homeUnsubs.length;
+  const watch = (name, q, src) => { if (gen === homeGen) homeUnsubs.push(onSnapshot(q, snap => { parts[name] = tag(snap.docs, src); draw(); }, () => { parts[name] = []; draw(); })); };
   // グループかプロフィールがある人だけログインして、友達の投稿を集める
   let hasMe = false; try { hasMe = localStorage.getItem("dff_me") === "1"; } catch {}
   const gs = joinedGroups();
@@ -852,16 +852,16 @@ async function fillHome() {
       if (tos.length) { watch("follow", query(collection(db, "pubposts"), where("uid", "in", tos.slice(0, 30)), limit(30)), { kind: "pub" }); sources++; }
     } catch {}
   }
-  if (homeUnsubs.length < started || !$("hxCards")) return;   // 読み込み中に画面が変わった
+  if (gen !== homeGen || !$("hxCards")) return;   // 読み込み中に画面が変わった
   if (!sources) {
-    $("hxSub").textContent = "みんなの新着";
+    $("hxSub").textContent = "新着のおすすめ";
     watch("pub", query(collection(db, "pubposts"), orderBy("createdAt", "desc"), limit(6)), { kind: "pub" });
   }
   $("hxMore").innerHTML = sources
-    ? `${groupOk ? `<a href="#group">グループを開く →</a>` : ""}<a href="#all">みんなの投稿を見る →</a>`
-    : `<div class="hx-cta"><p>友達とグループを作ったり、気になる人をフォローしたりすると、ここに友達のおすすめが並びます。</p><a class="btn small" href="#all">みんなの投稿を見る</a><a class="btn small ghost" href="#group">グループを作る</a></div>`;
+    ? `${groupOk ? `<a href="#group">グループを開く →</a>` : ""}<a href="#all">「見つける」を開く →</a>`
+    : `<div class="hx-cta"><p>友達とグループを作ったり、気になる人をフォローしたりすると、ここに友達のおすすめが並びます。</p><a class="btn small" href="#all">「見つける」を開く</a><a class="btn small ghost" href="#group">グループを作る</a></div>`;
 }
-window.addEventListener("df:leavehome", () => { homeUnsubs.forEach(u => u()); homeUnsubs = []; });
+window.addEventListener("df:leavehome", () => { homeUnsubs.forEach(u => u()); homeUnsubs = []; homeGen++; });
 
 // ===== 意見ボックス（誰でも送れる。読めるのは管理者だけ） =====
 function feedbackView() {
@@ -927,11 +927,11 @@ function adminView() {
       <div class="bar"><h2>管理</h2><div class="actions"><a class="btn small" href="write.html">✏️ おすすめを書く</a><button class="btn small ghost" id="aOut">ログアウト</button></div></div>
       <section class="stats">
         <div class="stat"><b id="sGroups">–</b><span>グループ</span></div>
-        <div class="stat"><b id="sPub">–</b><span>みんなへの投稿</span></div>
+        <div class="stat"><b id="sPub">–</b><span>公開の投稿</span></div>
         <div class="stat"><b id="sSongs">–</b><span>みんなのプレイリストの曲</span></div>
         <div class="stat"><b id="sLikes">–</b><span>公開曲のいいね合計</span></div>
       </section>
-      <p class="note">すべてのグループのメンバーと投稿を見て、投稿の削除・メンバーを外す・グループを閉じることができます。みんなへの投稿も消せます。問題のある写真やプロフィールは、その人のページの「管理者：このプロフィールを消す」で消せます。他の人になりすまして投稿したり、投稿を書き換えたりはできません。</p>
+      <p class="note">すべてのグループのメンバーと投稿を見て、投稿の削除・メンバーを外す・グループを閉じることができます。公開の投稿も消せます。問題のある写真やプロフィールは、その人のページの「管理者：このプロフィールを消す」で消せます。他の人になりすまして投稿したり、投稿を書き換えたりはできません。</p>
 
       <h3>💬 意見ボックス</h3>
       <div class="seg" style="margin-bottom:6px"><button class="btn small" data-fb="open">未対応</button><button class="btn small ghost" data-fb="all">すべて</button></div>
@@ -947,7 +947,7 @@ function adminView() {
       </div>
       <div id="aNews"></div>
 
-      <h3>🌐 みんなへの投稿</h3><div id="aPub">${LOADING}</div>
+      <h3>🌐 公開の投稿</h3><div id="aPub">${LOADING}</div>
       <h3>グループ</h3><div id="aGroups">${LOADING}</div>
       <h3>みんなのプレイリスト</h3><div class="flist" id="aSongs">${LOADING}</div>
     </div>`;
@@ -987,7 +987,7 @@ function adminView() {
     $("aNews").querySelectorAll("[data-ndel]").forEach(b => b.onclick = () => armed(b, "このお知らせを消す", () => deleteDoc(doc(adb, "announcements", b.dataset.ndel))));
   }, e => console.error(e)));
 
-  // みんなへの投稿
+  // 公開の投稿
   adminUnsubs.push(onSnapshot(query(collection(adb, "pubposts"), orderBy("createdAt", "desc"), limit(100)), snap => {
     $("sPub").textContent = snap.size >= 100 ? "100+" : snap.size;
     const list = tag(snap.docs, { kind: "pub" });
