@@ -184,7 +184,7 @@ const profileEditorHtml = cur => `
       <div class="actions"><button type="button" class="btn small" id="pePhoto">📷 写真を選ぶ</button><button type="button" class="btn small ghost" id="peNoPhoto" ${cur.photo ? "" : "hidden"}>写真をやめる</button>
         <input type="file" id="peFile" accept="image/*" hidden></div></div>
     <div class="lbl">写真を使わないときのアイコン ${pickerHtml("pePick", cur)}</div>
-    <label>ニックネーム<input id="peNick" maxlength="20" value="${esc(cur.nickname)}" placeholder="例：こうへい" autocomplete="nickname"></label>
+    <label>ニックネーム<input id="peNick" maxlength="20" value="${esc(cur.nickname)}" placeholder="例：みさき" autocomplete="nickname"></label>
     <label>ひとこと自己紹介（なくてもOK）<textarea id="peBio" maxlength="160" style="min-height:80px" placeholder="例：最近はシティポップばかり聴いています">${esc(cur.bio)}</textarea></label>
     <div class="actions"><button class="btn" id="peSave">保存する</button><span class="msg" id="peMsg"></span></div>
     <p class="note">写真・ニックネーム・自己紹介は、サイトを見る人なら誰でも見られます。顔写真や、住所・学校名など個人が分かるものは載せないようにしましょう。</p>
