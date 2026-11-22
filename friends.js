@@ -189,8 +189,17 @@ async function loadMyProfile(force) {
 // sync：参加しているグループのニックネーム・アイコンもそろえる
 async function saveProfile(p, sync) {
   await ensureAuth();
-  const data = { nickname: p.nickname, icon: p.icon, color: okColor(p.color), photo: photoOk(p.photo) ? p.photo : "", bio: p.bio || "", updatedAt: serverTimestamp() };
-  await setDoc(doc(db, "profiles", me), data);
+  const data = { nickname: p.nickname, icon: p.icon, color: okColor(p.color), photo: photoOk(p.photo) ? p.photo : "", bio: p.bio || "", private: !!p.private, updatedAt: serverTimestamp() };
+  const wasPrivate = !!(myProfile && myProfile.private);
+  if (wasPrivate === data.private) await setDoc(doc(db, "profiles", me), data);
+  else {
+    // 非公開／公開を切りかえたら、自分の公開の投稿の印（priv）も一緒に変える
+    const mine = await getDocs(query(collection(db, "pubposts"), where("uid", "==", me), limit(400)));
+    const b = writeBatch(db);
+    b.set(doc(db, "profiles", me), data);
+    mine.forEach(d => b.update(d.ref, { priv: data.private, updatedAt: serverTimestamp() }));
+    await b.commit();
+  }
   myProfile = { ...data }; myProfileLoaded = true; profCache.set(me, Promise.resolve(myProfile));
   try { localStorage.setItem("dff_me", "1"); } catch {}
   if (sync) await Promise.all(joinedGroups().map(g => updateDoc(doc(db, "groups", g.gid, "members", me), { nickname: data.nickname, icon: data.icon, color: data.color }).catch(() => {})));
@@ -246,7 +255,7 @@ async function photoFromFile(file) {
 
 // プロフィールを作る・直す欄
 const profDraft = p => ({ nickname: (p && p.nickname) || "", icon: (p && p.icon) || pickOne(EMOJIS), color: p && COLORS.includes(p.color) ? p.color : pickOne(COLORS),
-                          photo: p && photoOk(p.photo) ? p.photo : "", bio: (p && p.bio) || "" });
+                          photo: p && photoOk(p.photo) ? p.photo : "", bio: (p && p.bio) || "", private: !!(p && p.private) });
 const profileEditorHtml = cur => `
   <div class="pedit">
     <div class="ph-row"><span id="peAv">${bigAv(cur)}</span>
@@ -255,8 +264,10 @@ const profileEditorHtml = cur => `
     <div class="lbl">写真を使わないときのアイコン ${pickerHtml("pePick", cur)}</div>
     <label>ニックネーム<input id="peNick" maxlength="20" value="${esc(cur.nickname)}" placeholder="例：みさき" autocomplete="nickname"></label>
     <label>ひとこと自己紹介（なくてもOK）<textarea id="peBio" maxlength="160" style="min-height:80px" placeholder="例：最近はシティポップばかり聴いています">${esc(cur.bio)}</textarea></label>
+    <label class="check privrow"><input type="checkbox" id="pePriv" ${cur.private ? "checked" : ""}><span><b>🔒 非公開アカウント</b><br>
+      <span class="note">オンにすると、あなたの「公開」の投稿は、<b>あなたが承認したフォロワーだけ</b>が見られます。フォローはリクエスト制になり、「お知らせ」で承認できます（グループの投稿はこれまでどおりメンバーに見えます）。</span></span></label>
     <div class="actions"><button class="btn" id="peSave">保存する</button><span class="msg" id="peMsg"></span></div>
-    <p class="note">写真・ニックネーム・自己紹介は、サイトを見る人なら誰でも見られます。顔写真や、住所・学校名など個人が分かるものは載せないようにしましょう。</p>
+    <p class="note">写真・ニックネーム・自己紹介は、非公開アカウントでも誰でも見られます。顔写真や、住所・学校名など個人が分かるものは載せないようにしましょう。</p>
   </div>`;
 function bindProfileEditor(cur, onSaved) {
   const redraw = () => { $("peAv").innerHTML = bigAv(cur); $("peNoPhoto").hidden = !cur.photo; };
@@ -271,7 +282,7 @@ function bindProfileEditor(cur, onSaved) {
   };
   $("peNoPhoto").onclick = () => { cur.photo = ""; redraw(); };
   $("peSave").onclick = async () => {
-    cur.nickname = $("peNick").value.trim(); cur.bio = $("peBio").value.trim();
+    cur.nickname = $("peNick").value.trim(); cur.bio = $("peBio").value.trim(); cur.private = $("pePriv").checked;
     if (!cur.nickname) return setMsg("peMsg", "ニックネームを入れてください。", false);
     $("peSave").disabled = true; setMsg("peMsg", "保存しています…", true);
     try { await saveProfile(cur, true); toast("保存しました"); onSaved && onSaved(); }
@@ -281,13 +292,34 @@ function bindProfileEditor(cur, onSaved) {
 
 // ===== フォロー =====
 const followId = to => `${me}_${to}`;
-async function myFollowing() { await ensureAuth(); const s = await getDocs(query(collection(db, "follows"), where("from", "==", me), limit(500))); return s.docs.map(d => d.data().to); }
-async function myFollowers() { await ensureAuth(); const s = await getDocs(query(collection(db, "follows"), where("to", "==", me), limit(500))); return s.docs.map(d => d.data().from); }
+const isApproved = d => d.approved !== false;   // 前からあるフォロー（approved がない）は承認済みとして扱う
+// フォロー中（承認済みだけ）／フォロワー（承認済みだけ）
+async function myFollowing() { return (await myFollowingAll()).filter(x => x.ok).map(x => x.to); }
+async function myFollowingAll() { await ensureAuth(); const s = await getDocs(query(collection(db, "follows"), where("from", "==", me), limit(500))); return s.docs.map(d => ({ to: d.data().to, ok: isApproved(d.data()) })); }
+async function myFollowersAll() { await ensureAuth(); const s = await getDocs(query(collection(db, "follows"), where("to", "==", me), limit(500))); return s.docs.map(d => ({ from: d.data().from, ok: isApproved(d.data()) })); }
+async function myFollowers() { return (await myFollowersAll()).filter(x => x.ok).map(x => x.from); }
+// フォローする／やめる。相手が非公開アカウントなら「リクエスト」になる。戻り値："on"（フォロー中）・"req"（リクエスト済み）・""（していない）
 async function setFollow(to, on) {
   await ensureAuth();
-  if (on) await setDoc(doc(db, "follows", followId(to)), { from: me, to, createdAt: serverTimestamp() });
-  else await deleteDoc(doc(db, "follows", followId(to)));
-  sendNotif(to, `follow_${me}`, on, { type: "follow", title: "", image: "", kind: "", gid: "", pid: "" });
+  if (on) {
+    profCache.delete(to); const p = await getProfile(to);
+    const approved = !(p && p.private);
+    await setDoc(doc(db, "follows", followId(to)), { from: me, to, approved, createdAt: serverTimestamp() });
+    sendNotif(to, `follow_${me}`, true, { type: approved ? "follow" : "request", title: "", image: "", kind: "", gid: "", pid: "" });
+    return approved ? "on" : "req";
+  }
+  await deleteDoc(doc(db, "follows", followId(to)));
+  sendNotif(to, `follow_${me}`, false);
+  return "";
+}
+// フォローリクエストを承認する／断る（非公開アカウントの本人）
+async function answerRequest(from, ok) {
+  await ensureAuth();
+  if (ok) {
+    await updateDoc(doc(db, "follows", `${from}_${me}`), { approved: true });
+    sendNotif(from, `accept_${me}`, true, { type: "accept", title: "", image: "", kind: "", gid: "", pid: "" });
+  } else await deleteDoc(doc(db, "follows", `${from}_${me}`));
+  try { await deleteDoc(doc(db, "notifs", me, "items", `follow_${from}`)); } catch {}
 }
 
 // ===== 通知（いいね・フォローされたら、相手の「お知らせ」に届く） =====
@@ -317,7 +349,10 @@ async function watchActivity() {
   actUnsub = onSnapshot(query(collection(db, "notifs", me, "items"), where("read", "==", false), limit(99)),
     s => window.DF && window.DF.setActBadge && window.DF.setActBadge(s.size), () => {});
 }
-const followBtn = (uid, on) => `<button class="btn small ${on ? "ghost" : ""}" data-fol="${esc(uid)}" data-on="${on ? "1" : ""}">${on ? "フォロー中" : "フォローする"}</button>`;
+// state：true または "on"（フォロー中）・"req"（リクエスト済み）・それ以外（フォローしていない）
+const FOL_LABEL = { on: "フォロー中", req: "リクエスト済み", "": "フォローする" };
+const folState = s => (s === true || s === "on" ? "on" : s === "req" ? "req" : "");
+const followBtn = (uid, state) => { const s = folState(state); return `<button class="btn small ${s ? "ghost" : ""}" data-fol="${esc(uid)}" data-on="${s}">${FOL_LABEL[s]}</button>`; };
 const userRow = (uid, p, extra = "") => `<div class="urow"><a href="${esc(userHash(uid))}">${av(p && p.icon, p && p.color, uid)}<span>${esc((p && p.nickname) || "（プロフィールなし）")}</span></a>${extra}</div>`;
 // フォローボタンを押したとき（プロフィールがまだなら先に作ってもらう）
 function bindFollowBtns(el, after) {
@@ -325,7 +360,12 @@ function bindFollowBtns(el, after) {
     const uid = b.dataset.fol, on = !b.dataset.on;
     if (on && !(await loadMyProfile().catch(() => null))) return askProfile("フォローするには、先にあなたのプロフィールを作ってください。", () => after && after());
     b.disabled = true;
-    try { await setFollow(uid, on); b.dataset.on = on ? "1" : ""; b.textContent = on ? "フォロー中" : "フォローする"; b.classList.toggle("ghost", on); toast(on ? "フォローしました" : "フォローをやめました"); after && after(uid, on); }
+    try {
+      const s = await setFollow(uid, on);
+      b.dataset.on = s; b.textContent = FOL_LABEL[s]; b.classList.toggle("ghost", !!s);
+      toast(s === "on" ? "フォローしました" : s === "req" ? "フォローをリクエストしました（相手が承認すると投稿が見られます）" : "フォローをやめました");
+      after && after(uid, s === "on", s);
+    }
     catch (e) { console.error(e); toast("うまくいきませんでした"); }
     b.disabled = false;
   });
@@ -747,23 +787,36 @@ async function openCompose(post, target, after) {
   }
   target = post ? post._src : (target || { kind: "pub" });
   const groups = joinedGroups();
-  const draft = post ? { ...post } : { category: "音楽", title: "", by: "", oneline: "", link: "", image: "", rating: 4, public: true };
+  const draft = post ? { ...post } : { category: "", title: "", by: "", oneline: "", link: "", image: "", rating: 4, public: true };
+  // ① まずカテゴリを選ぶ（インスタの「何を投稿する？」のように）
+  if (!post && !draft.category) {
+    c.innerHTML = `
+      <h2 class="cmp-h">何をシェアする？</h2>
+      <div class="catpick">${Object.keys(CATS).map(k => `<button type="button" data-cat="${k}"><span class="ce">${CAT_EMOJI[k] || "✨"}</span><b>${k}</b></button>`).join("")}</div>
+      <div class="actions"><button class="btn ghost small" id="cancel" type="button">やめる</button></div>`;
+    c.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { draft.category = b.dataset.cat; drawForm(); });
+    $("cancel").onclick = () => { c.hidden = true; c.innerHTML = ""; };
+    c.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  drawForm();
+
+  // ② カテゴリに合わせた入力欄
+  function drawForm() {
+  const H = CAT_HINT[draft.category] || CAT_HINT["その他"], isMusic = draft.category === "音楽";
   const oneLabel = () => (target.kind === "pub" ? "ひとこと（誰でも見られます）" : "ひとこと（グループの人だけに見えます）");
   c.innerHTML = `
     ${post ? `<p class="note">${target.kind === "pub" ? "🌐 公開の投稿" : "👥 " + esc(target.gname || "グループ") + " への投稿"}を編集しています</p>`
-      : `<label>投稿先<select id="fTo"><option value="pub">🌐 公開（誰でも見られる・「見つける」に載る）</option>${groups.map(g => `<option value="${esc(g.gid)}" ${target.kind === "group" && target.gid === g.gid ? "selected" : ""}>👥 ${esc(g.name)}（グループの人だけ）</option>`).join("")}</select></label>`}
-    <div class="actions"><button type="button" class="btn small" id="srcSong">🎵 曲を探す</button><button type="button" class="btn small ghost" id="srcMine">DAILY FIND の記事から選ぶ</button></div>
-    <input id="mq" type="search" enterkeyhint="search" placeholder="曲名やアーティスト名を入れる" autocomplete="off">
+      : `<label>投稿先<select id="fTo"><option value="pub">🌐 公開（${myProfile && myProfile.private ? "🔒 非公開アカウントなので、承認したフォロワーだけ" : "誰でも見られる・「見つける」に載る"}）</option>${groups.map(g => `<option value="${esc(g.gid)}" ${target.kind === "group" && target.gid === g.gid ? "selected" : ""}>👥 ${esc(g.name)}（グループの人だけ）</option>`).join("")}</select></label>`}
+    <div class="catrow">${Object.keys(CATS).map(k => `<button type="button" data-cat="${k}" class="${k === draft.category ? "on" : ""}">${CAT_EMOJI[k] || ""} ${k}</button>`).join("")}</div>
+    ${isMusic ? `<input id="mq" type="search" enterkeyhint="search" placeholder="🎵 曲名やアーティスト名で探す" autocomplete="off">` : ""}
     <div class="suggest" id="suggest" hidden></div>
-    <div class="picked"><div id="pv"></div><div class="note">曲名を入れて候補から選ぶと、タイトル・ジャケット・リンクが自動で入ります。曲以外は下に直接書いてください。</div></div>
-    <div class="row2">
-      <label>カテゴリ<select id="fCat">${Object.keys(CATS).map(k => `<option ${k === draft.category ? "selected" : ""}>${k}</option>`).join("")}</select></label>
-      <label>タイトル<input id="fTitle" maxlength="100" value="${esc(draft.title)}"></label>
-    </div>
-    <label>作者・アーティスト・場所など<input id="fBy" maxlength="100" value="${esc(draft.by)}"></label>
-    <label><span id="oneLbl">${oneLabel()}</span><input id="fOne" maxlength="200" value="${esc(draft.oneline)}" placeholder="例：夕日を見ながら聴きたい曲"></label>
+    <div class="picked"><div id="pv"></div><div class="note">${isMusic ? "曲名を入れて候補から選ぶと、タイトル・ジャケット・リンクが自動で入ります。" : `下に${esc(H.title)}などを書いてください。`}<br><button type="button" class="txt" id="srcMine">DAILY FIND の記事から選ぶ</button></div></div>
+    <label>${esc(H.title)}<input id="fTitle" maxlength="100" value="${esc(draft.title)}" placeholder="${esc(H.tph)}"></label>
+    <label>${esc(H.by)}<input id="fBy" maxlength="100" value="${esc(draft.by)}" placeholder="${esc(H.bph)}"></label>
+    <label><span id="oneLbl">${oneLabel()}</span><input id="fOne" maxlength="200" value="${esc(draft.oneline)}" placeholder="${esc(H.oph)}"></label>
     <div class="lbl" role="group" aria-label="評価">評価<div class="rate" id="rate">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-n="${n}" aria-label="星${n}">★</button>`).join("")}</div></div>
-    <label>リンク（なくてもOK）<input id="fLink" type="url" maxlength="500" value="${esc(draft.link)}" placeholder="https://"></label>
+    <label>リンク（なくてもOK）<input id="fLink" type="text" inputmode="url" autocapitalize="off" autocorrect="off" maxlength="500" value="${esc(draft.link)}" placeholder="${esc(H.lph)}"></label>
     <label class="check" id="pubRow"><input type="checkbox" id="fPub" ${draft.public !== false ? "checked" : ""}><span>曲を「みんなのプレイリスト」にも載せる<br><span class="note">載るのは曲名・アーティスト・ジャケット・リンク・いいね数だけです。誰が投稿したかは載りません。</span></span></label>
     <div class="actions"><button class="btn" id="post">${post ? "更新する" : "シェアする"}</button><button class="btn ghost" id="cancel" type="button">やめる</button><span class="msg" id="pMsg"></span></div>`;
   if ($("fTo")) $("fTo").onchange = () => {
@@ -771,12 +824,19 @@ async function openCompose(post, target, after) {
     target = g ? { kind: "group", gid: g.gid, gname: g.name } : { kind: "pub" };
     $("oneLbl").textContent = oneLabel();
   };
+  // カテゴリを変えたら、入力中の内容を残して欄を作り直す
+  c.querySelectorAll(".catrow [data-cat]").forEach(b => b.onclick = () => {
+    Object.assign(draft, { title: $("fTitle").value, by: $("fBy").value, oneline: $("fOne").value, link: $("fLink").value, public: $("fPub").checked });
+    if ($("fTo")) { const v = $("fTo").value, g = groups.find(x => x.gid === v); target = g ? { kind: "group", gid: g.gid, gname: g.name } : { kind: "pub" }; }
+    draft.category = b.dataset.cat; drawForm();
+  });
+  if ($("fTo")) $("fTo").value = target.kind === "group" ? target.gid : "pub";
   const drawRate = () => c.querySelectorAll("#rate button").forEach(b => b.classList.toggle("on", +b.dataset.n <= draft.rating));
-  const drawPv = () => { $("pv").innerHTML = cover({ title: $("fTitle").value || "タイトル", category: $("fCat").value, image: draft.image }); $("pubRow").hidden = $("fCat").value !== "音楽"; };
+  const drawPv = () => { $("pv").innerHTML = cover({ title: $("fTitle").value || H.title, category: draft.category, image: draft.image }); $("pubRow").hidden = !isMusic; };
   $("rate").onclick = e => { const b = e.target.closest("button[data-n]"); if (b) { draft.rating = +b.dataset.n; drawRate(); } };
-  $("fTitle").oninput = drawPv; $("fCat").onchange = drawPv;
+  $("fTitle").oninput = drawPv;
   drawRate(); drawPv(); c.scrollIntoView({ behavior: "smooth", block: "start" });
-  if (!post) setTimeout(() => $("mq") && $("mq").focus({ preventScroll: true }), 350);   // すぐ曲名を打てるように
+  if (!post) setTimeout(() => ($("mq") || $("fTitle")).focus({ preventScroll: true }), 350);   // すぐ打てるように
 
   let seq = 0, timer = null, results = [];
   const sug = $("suggest");
@@ -787,11 +847,15 @@ async function openCompose(post, target, after) {
       : `<div class="s-msg">見つかりませんでした。</div>`;
     sug.querySelectorAll(".s-item").forEach(el => el.onclick = () => {
       const r = results[+el.dataset.i];
-      $("fTitle").value = r.title; $("fBy").value = r.by || ""; $("fCat").value = r.category || "音楽";
+      $("fTitle").value = r.title; $("fBy").value = r.by || "";
       if (r.link) $("fLink").value = r.link;
       if (r.oneline && !$("fOne").value) $("fOne").value = r.oneline;
       if (r.rating) { draft.rating = r.rating; drawRate(); }
-      draft.image = r.image || ""; sug.hidden = true; $("mq").value = ""; drawPv();
+      draft.image = r.image || ""; sug.hidden = true; if ($("mq")) $("mq").value = "";
+      if (r.category && r.category !== draft.category) {   // 記事のカテゴリに合わせる
+        Object.assign(draft, { title: r.title, by: r.by || "", oneline: $("fOne").value, link: $("fLink").value, category: r.category }); return drawForm();
+      }
+      drawPv();
     });
   };
   const runSearch = async () => {
@@ -800,27 +864,31 @@ async function openCompose(post, target, after) {
     sug.hidden = false; sug.innerHTML = `<div class="s-msg">探しています…</div>`;
     try { const r = await searchSongs(q); if (my === seq) showResults(r); } catch { if (my === seq) sug.innerHTML = `<div class="s-msg">曲の検索につながりませんでした。</div>`; }
   };
-  $("mq").addEventListener("input", e => { if (e.isComposing) return; clearTimeout(timer); timer = setTimeout(runSearch, 450); });
-  $("mq").addEventListener("compositionend", () => { clearTimeout(timer); timer = setTimeout(runSearch, 300); });
-  $("mq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); runSearch(); } });
-  $("srcSong").onclick = () => $("mq").focus();
+  if ($("mq")) {
+    $("mq").addEventListener("input", e => { if (e.isComposing) return; clearTimeout(timer); timer = setTimeout(runSearch, 450); });
+    $("mq").addEventListener("compositionend", () => { clearTimeout(timer); timer = setTimeout(runSearch, 300); });
+    $("mq").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); runSearch(); } });
+  }
   $("srcMine").onclick = async () => {
     try {
       const picks = (await (await fetch("picks.json?v=" + Date.now(), { cache: "no-store" })).json()).sort((a, b) => String(b.date).localeCompare(String(a.date)));
       const abs = img => /^images\/[\w.-]+$/.test(img || "") ? `https://dailyfind.github.io/${img}` : (/^https:\/\//.test(img || "") ? img : "");
-      showResults(picks.map(p => ({ title: p.title, by: p.by, category: p.category, oneline: p.oneline, rating: p.rating, link: safeLink(p.link), image: abs(p.image), thumb: abs(p.image) })), "DAILY FIND の記事");
+      const mine = picks.filter(p => p.category === draft.category);
+      showResults((mine.length ? mine : picks).map(p => ({ title: p.title, by: p.by, category: p.category, oneline: p.oneline, rating: p.rating, link: safeLink(p.link), image: abs(p.image), thumb: abs(p.image) })), "DAILY FIND の記事");
     } catch { showResults([], ""); }
   };
   $("cancel").onclick = () => { c.hidden = true; c.innerHTML = ""; };
   $("post").onclick = async () => {
     const who = post ? { nickname: post.nickname, icon: post.icon, color: post.color } : { nickname: myProfile.nickname, icon: myProfile.icon, color: myProfile.color };
+    const link = normLink($("fLink").value);
     const data = {
       uid: me, ...who,
-      category: $("fCat").value, title: $("fTitle").value.trim(), by: $("fBy").value.trim(), oneline: $("fOne").value.trim(), link: $("fLink").value.trim(),
-      image: /^https:\/\//.test(draft.image || "") ? draft.image : "", rating: draft.rating | 0, public: $("fCat").value === "音楽" && $("fPub").checked,
+      category: draft.category, title: $("fTitle").value.trim(), by: $("fBy").value.trim(), oneline: $("fOne").value.trim(), link: link || "",
+      image: /^https:\/\//.test(draft.image || "") ? draft.image : "", rating: draft.rating | 0, public: isMusic && $("fPub").checked,
     };
-    if (!data.title) return setMsg("pMsg", "タイトルを入れてください。", false);
-    if (data.link && !/^https:\/\//i.test(data.link)) return setMsg("pMsg", "リンクは https:// から始まるアドレスにしてください。", false);
+    if (!data.title) return setMsg("pMsg", `${H.title}を入れてください。`, false);
+    if (link === null) return setMsg("pMsg", "リンクが読み取れませんでした。http:// や https:// から始まるアドレス（または www. から始まるアドレス）を入れてください。", false);
+    if (target.kind === "pub") data.priv = !!(myProfile && myProfile.private);   // 非公開アカウントの投稿には印をつける
     $("post").disabled = true; setMsg("pMsg", "シェアしています…", true);
     try {
       const isPub = target.kind === "pub";
@@ -844,6 +912,27 @@ async function openCompose(post, target, after) {
       after && after(target);
     } catch (e) { console.error(e); setMsg("pMsg", "シェアできませんでした。少し待ってからもう一度押してください。", false); $("post").disabled = false; }
   };
+  }   // drawForm のおわり
+}
+
+// カテゴリごとの絵文字と、入力欄の言葉
+const CAT_EMOJI = { "音楽": "🎵", "本": "📚", "映画": "🎬", "お店": "🍽️", "アニメ": "📺", "ゲーム": "🎮", "その他": "✨" };
+const CAT_HINT = {
+  "音楽": { title: "曲名", tph: "例：BLOW", by: "アーティスト", bph: "例：Ed Sheeran", oph: "例：夕日を見ながら聴きたい曲", lph: "Apple Music や YouTube のリンク（なくてもOK）" },
+  "本": { title: "本のタイトル", tph: "例：君たちはどう生きるか", by: "作者", bph: "例：吉野源三郎", oph: "例：迷ったときに読み返したい本", lph: "本の紹介ページのリンク（なくてもOK）" },
+  "映画": { title: "映画のタイトル", tph: "例：千と千尋の神隠し", by: "監督・出演", bph: "例：宮崎駿", oph: "例：何回見ても泣ける", lph: "予告編や作品ページのリンク（なくてもOK）" },
+  "お店": { title: "お店の名前", tph: "例：〇〇カフェ", by: "場所・エリア", bph: "例：渋谷", oph: "例：プリンが絶品", lph: "お店のページや地図のリンク（なくてもOK）" },
+  "アニメ": { title: "アニメのタイトル", tph: "例：葬送のフリーレン", by: "制作・原作", bph: "例：マッドハウス", oph: "例：静かに泣ける", lph: "作品ページや配信のリンク（なくてもOK）" },
+  "ゲーム": { title: "ゲームのタイトル", tph: "例：スプラトゥーン3", by: "メーカー・機種", bph: "例：Nintendo Switch", oph: "例：友達とやると最高", lph: "ゲームのページのリンク（なくてもOK）" },
+  "その他": { title: "タイトル", tph: "例：おすすめのもの", by: "作者・場所など", bph: "", oph: "例：ここが好き", lph: "リンク（なくてもOK）" },
+};
+// リンクを読み取る：http:// と https:// はそのまま、「www.〜」や「example.com/〜」は https:// をつける。読めなければ null
+function normLink(v) {
+  v = String(v || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\/[^\s"<>]+$/i.test(v)) return v;
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+([/?#][^\s"<>]*)?$/i.test(v)) return "https://" + v;
+  return null;
 }
 
 // ===== 見つける（新着・フォロー中・みんなのプレイリスト） =====
@@ -872,7 +961,7 @@ function drawAll() {
   const body = $("abody"); if (!body) return;
   body.innerHTML = LOADING;
   if (allTab === "new") {
-    unsubs.push(onSnapshot(query(collection(db, "pubposts"), orderBy("createdAt", "desc"), limit(60)), snap => {
+    unsubs.push(onSnapshot(query(collection(db, "pubposts"), where("priv", "==", false), orderBy("createdAt", "desc"), limit(60)), snap => {
       const list = tag(snap.docs, { kind: "pub" });
       body.innerHTML = `<p class="note" style="margin:0 0 6px">公開された投稿が新しい順に並びます。名前を押すと、その人のページを見たりフォローしたりできます。</p>`
         + (list.length ? list.map(p => postHtml(p)).join("") : `<p class="empty">まだ投稿がありません。「＋ 投稿する」から、最初の1つをシェアしましょう。</p>`);
@@ -901,25 +990,44 @@ async function followFeed(body) {
   try { tos = await myFollowing(); } catch { body.innerHTML = `<p class="empty">読み込めませんでした。</p>`; return; }
   if (allTab !== "follow") return;
   if (!tos.length) { body.innerHTML = `<p class="empty">まだ誰もフォローしていません。「新着」で気になる人の名前を押して、その人のページでフォローしてみましょう。</p>`; return; }
-  const chunks = []; for (let i = 0; i < tos.length; i += 30) chunks.push(tos.slice(i, i + 30));
-  const parts = [];
-  const draw = () => {
-    const list = sortNew(parts.flat()).slice(0, 100);
+  await watchFollowPosts(tos, list => {
+    if (allTab !== "follow") return;
+    list = list.slice(0, 100);
     body.innerHTML = list.length ? list.map(p => postHtml(p)).join("") : `<p class="empty">フォローしている人の投稿はまだありません。</p>`;
     bindPostOps(body);
-  };
-  chunks.forEach((ch, i) => unsubs.push(onSnapshot(query(collection(db, "pubposts"), where("uid", "in", ch), limit(100)), snap => { parts[i] = tag(snap.docs, { kind: "pub" }); draw(); },
-    e => { console.error(e); parts[i] = []; draw(); })));
+  }, unsubs);
+}
+// フォローしている人（承認済み）の公開の投稿を見張る。公開アカウントの人はまとめて、非公開アカウントの人は1人ずつ読む
+async function watchFollowPosts(tos, onData, unsubList, max = 100) {
+  const parts = {};
+  const emit = () => onData(sortNew(Object.values(parts).flat()));
+  const profs = await Promise.all(tos.map(u => getProfile(u)));
+  const pub = tos.filter((u, i) => !(profs[i] && profs[i].private)), priv = tos.filter((u, i) => profs[i] && profs[i].private);
+  for (let i = 0; i < pub.length; i += 30) {
+    const k = "p" + i;
+    unsubList.push(onSnapshot(query(collection(db, "pubposts"), where("uid", "in", pub.slice(i, i + 30)), where("priv", "==", false), limit(max)),
+      s => { parts[k] = tag(s.docs, { kind: "pub" }); emit(); }, e => { console.warn(e); parts[k] = []; emit(); }));
+  }
+  priv.forEach(u => unsubList.push(onSnapshot(query(collection(db, "pubposts"), where("uid", "==", u), limit(50)),
+    s => { parts["v" + u] = tag(s.docs, { kind: "pub" }); emit(); }, e => { console.warn(e); parts["v" + u] = []; emit(); })));
+  if (!tos.length) emit();
 }
 
 // ===== ある人の投稿をまとめて読む（公開の投稿＋自分も入っているグループでの投稿） =====
+// 非公開アカウントで、まだ承認されていないときは out.locked = true（投稿は見られない）
 async function loadPostsOf(uid) {
   const out = [];
-  try { out.push(...tag((await getDocs(query(collection(db, "pubposts"), where("uid", "==", uid), limit(100)))).docs, { kind: "pub" })); } catch (e) { console.error(e); }
+  let q = query(collection(db, "pubposts"), where("uid", "==", uid), limit(100));
+  if (uid !== me) {
+    const p = await getProfile(uid);
+    if (!(p && p.private)) q = query(collection(db, "pubposts"), where("uid", "==", uid), where("priv", "==", false), limit(100));
+  }
+  try { out.push(...tag((await getDocs(q)).docs, { kind: "pub" })); } catch (e) { if (e && e.code === "permission-denied") out.locked = true; else console.error(e); }
   await Promise.all(joinedGroups().map(async g => {
     try { out.push(...tag((await getDocs(query(collection(db, "groups", g.gid, "posts"), where("uid", "==", uid), limit(100)))).docs, { kind: "group", gid: g.gid, gname: g.name })); } catch {}
   }));
-  return sortNew(out);
+  const locked = out.locked; const sorted = sortNew(out); sorted.locked = locked;
+  return sorted;
 }
 
 // ===== マイページ =====
@@ -942,13 +1050,17 @@ async function meView() {
     $("gLogin").onclick = () => loginGoogle("gLoginMsg");
     return;
   }
-  let following = [], followers = [], myPosts = [];
-  [following, followers, myPosts] = await Promise.all([myFollowing().catch(() => []), myFollowers().catch(() => []), loadPostsOf(me)]);
+  let followAll = [], followerAll = [], myPosts = [];
+  [followAll, followerAll, myPosts] = await Promise.all([myFollowingAll().catch(() => []), myFollowersAll().catch(() => []), loadPostsOf(me)]);
+  const stMap = new Map(followAll.map(x => [x.to, x.ok ? "on" : "req"]));   // 自分のフォロー（承認済み／リクエスト中）
+  let following = followAll.filter(x => x.ok).map(x => x.to), followers = followerAll.filter(x => x.ok).map(x => x.from);
+  let requests = followerAll.filter(x => !x.ok).map(x => x.from);   // 自分へのフォローリクエスト（非公開アカウントのとき）
   if (location.hash !== "#me") return;   // 読み込み中に別の画面へ移った
   root.innerHTML = `
     <div class="me-head">${bigAv(myProfile)}<div>
       <h2>${esc(myProfile.nickname)}</h2>${myProfile.bio ? `<p>${esc(myProfile.bio)}</p>` : ""}
-      <div class="counts"><button data-t="posts"><b>${myPosts.length}</b>投稿</button><button data-t="following"><b>${following.length}</b>フォロー中</button><button data-t="followers"><b>${followers.length}</b>フォロワー</button></div>
+      <div class="counts"><button data-t="posts"><b>${myPosts.length}</b>投稿</button><button data-t="following"><b>${following.length}</b>フォロー中</button><button data-t="followers"><b>${followers.length}</b>フォロワー${requests.length ? `<span class="reqdot">${requests.length}</span>` : ""}</button></div>
+      ${myProfile.private ? `<p class="note" style="margin:6px 0 0">🔒 非公開アカウント：公開の投稿は、承認したフォロワーだけが見られます。</p>` : ""}
     </div></div>
     <div class="actions"><button class="btn small" id="newBtn">＋ 投稿する</button><button class="btn small ghost" id="editBtn">プロフィールを編集</button><button class="btn small ghost" id="linkBtn">自分のページのリンクをコピー</button></div>
     <section class="panel" id="profEdit" hidden style="margin-top:16px"></section>
@@ -983,13 +1095,24 @@ async function meView() {
       bindPostOps(body, { redraw: drawMe, reload: meView });
       return;
     }
-    const list = meTab === "following" ? following : followers;
-    if (!list.length) { body.innerHTML = `<p class="empty">${meTab === "following" ? "まだ誰もフォローしていません。「見つける」で気になる人の名前を押すと、フォローできます。" : "まだフォロワーはいません。"}</p>`; return; }
+    // フォロー中のタブには、リクエスト中の人も「リクエスト済み」で出す
+    const list = meTab === "following" ? followAll.map(x => x.to) : followers;
+    const reqs = meTab === "followers" ? requests : [];
+    if (!list.length && !reqs.length) { body.innerHTML = `<p class="empty">${meTab === "following" ? "まだ誰もフォローしていません。「見つける」で気になる人の名前を押すと、フォローできます。" : "まだフォロワーはいません。"}</p>`; return; }
     body.innerHTML = LOADING;
-    await Promise.all(list.map(async u => { if (!(u in profs)) profs[u] = await getProfile(u); }));
-    body.innerHTML = list.map(u => userRow(u, profs[u], followBtn(u, following.includes(u)))).join("");
-    bindFollowBtns(body, (uid, on) => { if (uid === undefined) return meView(); following = on ? [...new Set([...following, uid])] : following.filter(x => x !== uid);
+    await Promise.all([...list, ...reqs].map(async u => { if (!(u in profs)) profs[u] = await getProfile(u); }));
+    body.innerHTML = (reqs.length ? `<h3 class="act-sec">フォローリクエスト（${reqs.length}）</h3>` + reqs.map(u => userRow(u, profs[u],
+        `<span class="reqbtns"><button class="btn small" data-ok="${esc(u)}">承認</button><button class="btn small ghost" data-ng="${esc(u)}">削除</button></span>`)).join("")
+        + (list.length ? `<h3 class="act-sec">フォロワー</h3>` : "") : "")
+      + list.map(u => userRow(u, profs[u], followBtn(u, stMap.get(u) || ""))).join("");
+    bindFollowBtns(body, (uid, on, s) => { if (uid === undefined) return meView(); if (s) stMap.set(uid, s); else stMap.delete(uid);
+      following = [...stMap].filter(([, v]) => v === "on").map(([k]) => k);
       root.querySelector('.counts [data-t="following"] b').textContent = following.length; });
+    body.querySelectorAll("[data-ok], [data-ng]").forEach(b => b.onclick = async () => {
+      const u = b.dataset.ok || b.dataset.ng, ok = !!b.dataset.ok; b.disabled = true;
+      try { await answerRequest(u, ok); toast(ok ? "承認しました" : "リクエストを削除しました"); requests = requests.filter(x => x !== u); if (ok) followers = [...followers, u]; drawMe(); }
+      catch (e) { console.error(e); toast("うまくいきませんでした"); b.disabled = false; }
+    });
   }
   tabsOn(); drawMe();
 }
@@ -1011,7 +1134,7 @@ async function activityView() {
   current = null;
   root.innerHTML = `<div class="bar"><h2>お知らせ</h2></div><div id="actList">${LOADING}</div>`;
   try { await ensureAuth(); } catch { root.innerHTML = `<p class="empty">つながりませんでした。通信状況を確認して、開き直してください。</p>`; return; }
-  let following = new Set(await myFollowing().catch(() => []));
+  let following = new Map((await myFollowingAll().catch(() => [])).map(x => [x.to, x.ok ? "on" : "req"]));
   let unreadAtOpen = null;   // 開いたときに未読だったもの（その間は色をつけて目立たせる）
   unsubs.push(onSnapshot(query(collection(db, "notifs", me, "items"), orderBy("createdAt", "desc"), limit(100)), snap => {
     const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1045,17 +1168,26 @@ function drawActivity(items, following, unreadAtOpen) {
   for (const r of rows) {
     if (r.sec !== lastSec) { html += `<h3 class="act-sec">${r.sec}</h3>`; lastSec = r.sec; }
     const n = r.n, others = r.people.length - 1;
-    const text = r.type === "follow"
-      ? `${who(n)}があなたをフォローしました。`
+    const text = r.type === "follow" ? `${who(n)}があなたをフォローしました。`
+      : r.type === "request" ? `${who(n)}がフォローをリクエストしました。`
+      : r.type === "accept" ? `${who(n)}があなたのフォローリクエストを承認しました。`
       : `${who(n)}${others ? `、他${others}人` : ""}があなたの投稿「${esc(n.title)}」に「いいね！」しました。`;
-    const right = r.type === "follow"
-      ? followBtn(n.from, following.has(n.from)).replace('class="btn small', 'class="btn small act-btn')
+    const right = r.type === "request"
+      ? `<span class="reqbtns"><button class="btn small act-btn" data-ok="${esc(n.from)}">承認</button><button class="btn small ghost act-btn" data-ng="${esc(n.from)}">削除</button></span>`
+      : r.type === "follow" || r.type === "accept"
+      ? followBtn(n.from, following.get(n.from) || "").replace('class="btn small', 'class="btn small act-btn')
       : `<a class="act-thumb" href="${n.kind === "group" ? "#group" : "#me"}" data-gid="${esc(n.gid || "")}">${n.image ? `<img src="${esc(n.image)}" alt="" loading="lazy">` : `<span class="act-ph">${esc(String(n.title || "").slice(0, 2))}</span>`}</a>`;
     html += `<div class="act-row ${r.isNew ? "new" : ""}">${faces(r.people)}<div class="act-text">${text}<span class="act-time">${ago(n.createdAt)}</span></div>${right}</div>`;
   }
   box.innerHTML = html;
   box.querySelectorAll(".act-thumb[data-gid]").forEach(a => a.onclick = () => { if (a.dataset.gid) setLast(a.dataset.gid); });
-  bindFollowBtns(box, (uid, on) => { if (uid === undefined) return; if (on) following.add(uid); else following.delete(uid); });
+  bindFollowBtns(box, (uid, on, s) => { if (uid === undefined) return; if (s) following.set(uid, s); else following.delete(uid); });
+  box.querySelectorAll("[data-ok], [data-ng]").forEach(b => b.onclick = async () => {
+    const u = b.dataset.ok || b.dataset.ng, ok = !!b.dataset.ok;
+    b.closest(".reqbtns").querySelectorAll("button").forEach(x => x.disabled = true);
+    try { await answerRequest(u, ok); toast(ok ? "承認しました" : "リクエストを削除しました"); }   // 通知は消えるので、自動で一覧から消える
+    catch (e) { console.error(e); toast("うまくいきませんでした"); b.closest(".reqbtns").querySelectorAll("button").forEach(x => x.disabled = false); }
+  });
 }
 
 // ===== ほかの人のページ =====
@@ -1064,30 +1196,37 @@ async function userView(uid) {
   root.innerHTML = LOADING;
   try { await ensureAuth(); } catch {}
   if (uid === me) { history.replaceState(null, "", "/#me"); window.DF && window.DF.setNav("me"); return meView(); }
+  profCache.delete(uid);
   const p = await getProfile(uid);
   if (!p) { root.innerHTML = `<p class="empty">この人のページは見つかりませんでした。</p>`; return; }
-  let following = false, nFollowers = 0, nFollowing = 0, posts = [];
+  let following = "", nFollowers = 0, nFollowing = 0, posts = [];
+  // フォロワー数・フォロー中の数は、承認済みだけ数える（全部の数 − リクエスト中の数）
+  const count = async (field, extra) => (await getCountFromServer(query(collection(db, "follows"), where(field, "==", uid), ...extra))).data().count;
   await Promise.all([
-    getDoc(doc(db, "follows", followId(uid))).then(d => { following = d.exists(); }).catch(() => {}),
-    getCountFromServer(query(collection(db, "follows"), where("to", "==", uid))).then(r => { nFollowers = r.data().count; }).catch(() => {}),
-    getCountFromServer(query(collection(db, "follows"), where("from", "==", uid))).then(r => { nFollowing = r.data().count; }).catch(() => {}),
-    loadPostsOf(uid).then(l => { posts = l; }),
+    getDoc(doc(db, "follows", followId(uid))).then(d => { following = d.exists() ? (isApproved(d.data()) ? "on" : "req") : ""; }).catch(() => {}),
+    Promise.all([count("to", []), count("to", [where("approved", "==", false)])]).then(([a, b]) => { nFollowers = a - b; }).catch(() => {}),
+    Promise.all([count("from", []), count("from", [where("approved", "==", false)])]).then(([a, b]) => { nFollowing = a - b; }).catch(() => {}),
   ]);
+  posts = await loadPostsOf(uid);
+  const locked = !!posts.locked && following !== "on";
   if (location.hash.slice(1) !== "u=" + encodeURIComponent(uid) && decodeURIComponent(location.hash.slice(3)) !== uid) return;
   root.innerHTML = `
     <div class="me-head">${bigAv(p)}<div>
-      <h2>${esc(p.nickname)}</h2>${p.bio ? `<p>${esc(p.bio)}</p>` : ""}
-      <div class="counts"><span><b>${posts.length}</b>投稿</span><span><b>${nFollowing}</b>フォロー中</span><span><b id="nFol">${nFollowers}</b>フォロワー</span></div>
+      <h2>${p.private ? `<span class="lock" title="非公開アカウント">🔒</span>` : ""}${esc(p.nickname)}</h2>${p.bio ? `<p>${esc(p.bio)}</p>` : ""}
+      <div class="counts"><span><b>${locked ? "–" : posts.length}</b>投稿</span><span><b>${nFollowing}</b>フォロー中</span><span><b id="nFol">${nFollowers}</b>フォロワー</span></div>
     </div></div>
     <div class="actions" id="uAct">${followBtn(uid, following)}${isAdmin ? `<button class="btn small ghost" id="admDelProf">管理者：このプロフィールを消す</button>` : ""}</div>
     <div class="tabs2" style="margin-top:22px"><button class="on">投稿</button></div>
     <div id="ubody"></div>`;
   const drawPosts = () => {
     const body = $("ubody"); if (!body) return;
-    body.innerHTML = posts.length ? posts.map(x => postHtml(x, { showSrc: true })).join("") : `<p class="empty">見られる投稿はまだありません。</p>`;
+    if (locked) {
+      body.innerHTML = `<div class="locked"><div class="lk">🔒</div><h3>このアカウントは非公開です</h3><p>${following === "req" ? "フォローをリクエストしました。相手が承認すると、投稿が見られるようになります。" : "フォローして、相手に承認されると投稿が見られます。"}</p>${posts.length ? `<p class="note">（同じグループでの投稿は下に出ています）</p>` : ""}</div>`
+        + posts.map(x => postHtml(x, { showSrc: true })).join("");
+    } else body.innerHTML = posts.length ? posts.map(x => postHtml(x, { showSrc: true })).join("") : `<p class="empty">見られる投稿はまだありません。</p>`;
     bindPostOps(body, { redraw: drawPosts, reload: () => userView(uid) });
   };
-  bindFollowBtns($("uAct"), (u, on) => { if (u === undefined) return userView(uid); nFollowers += on ? 1 : -1; $("nFol").textContent = Math.max(0, nFollowers); });
+  bindFollowBtns($("uAct"), (u, on, s) => { if (u === undefined) return userView(uid); if (s === "on" || (!s && following === "on")) userView(uid); else { following = s; drawPosts(); } });
   if ($("admDelProf")) $("admDelProf").onclick = e => armed(e.target, "管理者：このプロフィールを消す", async () => { await deleteDoc(doc(adb, "profiles", uid)); toast("消しました"); userView(uid); });
   drawPosts();
 }
@@ -1138,13 +1277,13 @@ async function fillHome() {
         if (groupOk) { watch("group", query(collection(db, "groups", g.gid, "posts"), orderBy("createdAt", "desc"), limit(6)), { kind: "group", gid: g.gid, gname: g.name }); sources++; }
       }
       const tos = await myFollowing().catch(() => []);
-      if (tos.length) { watch("follow", query(collection(db, "pubposts"), where("uid", "in", tos.slice(0, 30)), limit(30)), { kind: "pub" }); sources++; }
+      if (tos.length && gen === homeGen) { await watchFollowPosts(tos.slice(0, 60), list => { parts.follow = list; draw(); }, homeUnsubs, 30); sources++; }
     } catch {}
   }
   if (gen !== homeGen || !$("hxCards")) return;   // 読み込み中に画面が変わった
   if (!sources) {
     $("hxTitle").textContent = "New Picks"; $("hxSub").textContent = "みんなの新着のおすすめ";
-    watch("pub", query(collection(db, "pubposts"), orderBy("createdAt", "desc"), limit(6)), { kind: "pub" });
+    watch("pub", query(collection(db, "pubposts"), where("priv", "==", false), orderBy("createdAt", "desc"), limit(6)), { kind: "pub" });
   }
   $("hxMore").innerHTML = sources
     ? `${groupOk ? `<a href="#group">グループを開く →</a>` : ""}<a href="#all">「見つける」を開く →</a>`
@@ -1265,9 +1404,9 @@ function adminView() {
   $("nPost").onclick = async () => {
     const title = $("nTitle").value.trim(), body = $("nBody").value.trim(), link = $("nLink").value.trim();
     if (!title) return setMsg("nMsg", "タイトルを入れてください。", false);
-    if (link && !/^https:\/\//i.test(link)) return setMsg("nMsg", "リンクは https:// から始まるアドレスにしてください。", false);
+    if (normLink(link) === null) return setMsg("nMsg", "リンクが読み取れませんでした。http:// や https:// から始まるアドレスを入れてください。", false);
     $("nPost").disabled = true;
-    try { await addDoc(collection(adb, "announcements"), { title, body, link, createdAt: serverTimestamp() }); $("nTitle").value = ""; $("nBody").value = ""; $("nLink").value = ""; toast("お知らせを出しました"); setMsg("nMsg", "", true); }
+    try { await addDoc(collection(adb, "announcements"), { title, body, link: normLink(link) || "", createdAt: serverTimestamp() }); $("nTitle").value = ""; $("nBody").value = ""; $("nLink").value = ""; toast("お知らせを出しました"); setMsg("nMsg", "", true); }
     catch (e) { console.error(e); setMsg("nMsg", "出せませんでした。", false); }
     $("nPost").disabled = false;
   };

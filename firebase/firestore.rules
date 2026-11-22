@@ -4,6 +4,7 @@ rules_version = '2';
 // v4：プロフィール（写真アイコン）・フォロー・みんなへの投稿（パブリック投稿）を追加
 // v5：通知（いいね・フォローされたら届く「お知らせ」）を追加
 // v6：Google ログインでの引き継ぎ用に、入っているグループの一覧（mygroups）を追加
+// v7：非公開アカウント（フォローはリクエスト→承認制、投稿は承認したフォロワーだけ）。リンクは http:// も使える
 // ・友達は「匿名ログイン」だけ（メール・パスワード・名前は使わない）
 // ・グループの中身（メンバー・投稿・いいね・ひとこと）は、そのグループのメンバーと管理者だけが読める
 // ・グループは誰でも作れる。参加には招待リンクの合言葉が必要
@@ -24,21 +25,30 @@ service cloud.firestore {
     function isOwner(gid) { return signedIn() && get(groupDoc(gid)).data.owner == request.auth.uid; }
     function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
     function httpsOrEmpty(v) { return v is string && v.size() <= 500 && (v == "" || v.matches('^https://[^\\s"<>]+$')); }
+    function linkOrEmpty(v) { return v is string && v.size() <= 500 && (v == "" || v.matches('^https?://[^\\s"<>]+$')); }
     function iconOk(v) { return v is string && v.size() >= 1 && v.size() <= 8; }
     function colorOk(v) { return v in ['#8a3a2c', '#2c3a48', '#4a5240', '#463e5c', '#2c4644', '#47292f', '#b07a2a', '#3b3936']; }
     function pubDoc(pid) { return /databases/$(database)/documents/pubposts/$(pid); }
     function profileDoc(uid) { return /databases/$(database)/documents/profiles/$(uid); }
+    function followDoc(from, to) { return /databases/$(database)/documents/follows/$(from + '_' + to); }
+    // 非公開アカウントか（getAfter：同じまとめ書きの中でプロフィールを変えたときも、変えたあとで判断する）
+    function isPrivate(uid) { return getAfter(profileDoc(uid)).data.get('private', false) == true; }
+    // ログイン中の人が owner に「承認された」フォローをしているか
+    function approvedFollower(owner) {
+      return signedIn() && exists(followDoc(request.auth.uid, owner))
+        && get(followDoc(request.auth.uid, owner)).data.get('approved', true) == true;
+    }
     // 写真アイコン：小さくした JPEG（文字にしたもの）だけ。空なら写真なし
     function photoOk(v) { return v is string && v.size() <= 60000 && (v == '' || v.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$')); }
     // 投稿の中身（グループの投稿・みんなへの投稿で共通）
     function validPost(d) {
       return d.keys().hasOnly(['uid', 'nickname', 'icon', 'color', 'category', 'title', 'by', 'oneline', 'link', 'image',
-                               'rating', 'public', 'likes', 'createdAt', 'updatedAt'])
+                               'rating', 'public', 'likes', 'createdAt', 'updatedAt', 'priv'])
         && d.uid == request.auth.uid
         && str(d.nickname, 1, 20) && iconOk(d.icon) && colorOk(d.color)
         && d.category in ['本', '映画', '音楽', 'お店', 'アニメ', 'ゲーム', 'その他']
         && str(d.title, 1, 100) && str(d.by, 0, 100) && str(d.oneline, 0, 200)
-        && httpsOrEmpty(d.link) && httpsOrEmpty(d.image)
+        && linkOrEmpty(d.link) && httpsOrEmpty(d.image)
         && d.rating is int && d.rating >= 0 && d.rating <= 5
         && d.public is bool && d.likes is map;
     }
@@ -124,7 +134,8 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isAdmin();
       allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['nickname', 'icon', 'color', 'photo', 'bio', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['nickname', 'icon', 'color', 'photo', 'bio', 'private', 'updatedAt'])
+        && request.resource.data.get('private', false) is bool
         && str(request.resource.data.nickname, 1, 20)
         && iconOk(request.resource.data.icon)
         && colorOk(request.resource.data.color)
@@ -138,29 +149,46 @@ service cloud.firestore {
     match /follows/{fid} {
       allow read: if signedIn();
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['from', 'to', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['from', 'to', 'approved', 'createdAt'])
         && request.resource.data.from == request.auth.uid
         && request.resource.data.to is string && request.resource.data.to != request.auth.uid
         && fid == request.auth.uid + '_' + request.resource.data.to
         && exists(profileDoc(request.auth.uid)) && exists(profileDoc(request.resource.data.to))
+        && request.resource.data.get('approved', true) == !isPrivate(request.resource.data.to)
         && request.resource.data.createdAt == request.time;
-      allow delete: if (signedIn() && resource.data.from == request.auth.uid) || isAdmin();
+      // 承認：フォローされた本人だけが、リクエストを承認にできる（相手が非公開アカウントなら approved=false で作られる）
+      allow update: if signedIn() && resource.data.to == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approved'])
+        && request.resource.data.approved == true;
+      // フォローをやめる・リクエストを取り消す（する側）／フォロワーを外す・リクエストを断る（される側）
+      allow delete: if (signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid)) || isAdmin();
     }
 
     // みんなへの投稿（パブリック投稿）：誰でも見られる。書けるのはプロフィールを持っている本人だけ
+    // priv=true（非公開アカウントの投稿）は、本人と承認されたフォロワーと管理者だけが見られる
     match /pubposts/{pid} {
-      allow read: if true;
+      function canSee() {
+        return resource.data.get('priv', false) == false
+          || (signedIn() && resource.data.uid == request.auth.uid) || approvedFollower(resource.data.uid);
+      }
+      allow read: if canSee() || isAdmin();
       allow create: if signedIn() && exists(profileDoc(request.auth.uid))
         && validPost(request.resource.data)
+        && request.resource.data.get('priv', false) == isPrivate(request.auth.uid)
         && request.resource.data.likes.size() == 0
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
       allow update: if signedIn() && resource.data.uid == request.auth.uid
         && validPost(request.resource.data)
+        && request.resource.data.get('priv', false) == isPrivate(request.auth.uid)
         && request.resource.data.likes == resource.data.likes
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time;
-      allow update: if signedIn() && likeOnly();
+      allow update: if signedIn() && likeOnly() && canSee();
+      // 前からある投稿に priv=false の印をつけるだけ（印のない投稿のため）
+      allow update: if signedIn() && !('priv' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['priv'])
+        && request.resource.data.priv == false;
       allow delete: if (signedIn() && resource.data.uid == request.auth.uid) || isAdmin();
     }
 
@@ -213,8 +241,10 @@ service cloud.firestore {
         && n().from == request.auth.uid && n().read == false && n().createdAt == request.time
         && str(n().name, 1, 20) && iconOk(n().icon) && colorOk(n().color)
         && str(n().title, 0, 100) && httpsOrEmpty(n().image) && str(n().gid, 0, 64) && str(n().pid, 0, 64)
-        && ((n().type == 'follow' && nid == 'follow_' + request.auth.uid
-              && exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + uid)))
+        && ((n().type in ['follow', 'request'] && nid == 'follow_' + request.auth.uid
+              && exists(followDoc(request.auth.uid, uid)))
+          || (n().type == 'accept' && nid == 'accept_' + request.auth.uid
+              && exists(followDoc(uid, request.auth.uid)) && get(followDoc(uid, request.auth.uid)).data.approved == true)
           || (n().type == 'like' && n().kind in ['pub', 'group'] && nid == 'like_' + n().pid + '_' + request.auth.uid
               && likedPost()));
     }
@@ -250,7 +280,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['title', 'body', 'link', 'createdAt'])
         && str(request.resource.data.title, 1, 60)
         && str(request.resource.data.body, 0, 1000)
-        && httpsOrEmpty(request.resource.data.link)
+        && linkOrEmpty(request.resource.data.link)
         && request.resource.data.createdAt is timestamp;
       allow delete: if isAdmin();
     }

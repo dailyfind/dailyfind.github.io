@@ -267,6 +267,28 @@ a.chip, .who a.u, .urow a { text-decoration: none; color: inherit; }
 .act-empty h3 { color: var(--ink); font-size: 20px; margin: 14px 0 6px; }
 .act-empty p { font-size: 14px; margin: 0 auto; max-width: 320px; line-height: 1.8; }
 
+/* 投稿：最初にカテゴリを選ぶ */
+.cmp-h { margin: 0; font-size: 18px; }
+.catpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.catpick button { display: grid; justify-items: center; gap: 4px; padding: 14px 6px; border-radius: 14px; border: 1px solid var(--hair); background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; touch-action: manipulation; }
+.catpick button:active { transform: scale(.97); }
+.catpick .ce { font-size: 28px; line-height: 1; }
+.catpick b { font-size: 13px; }
+.catrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.catrow button { font: inherit; font-size: 12px; padding: 5px 11px; border-radius: 99px; border: 1px solid var(--hair); background: var(--paper); color: var(--muted); cursor: pointer; }
+.catrow button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
+#fapp .compose .txt { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--accent); text-decoration: underline; cursor: pointer; margin-top: 4px; }
+
+/* 非公開アカウント */
+.privrow { background: var(--paper); border-radius: 10px; padding: 12px; border: 1px solid var(--hair); }
+.lock { font-size: .8em; margin-right: 4px; }
+.locked { text-align: center; padding: 34px 16px; border-top: 1px solid var(--hair); color: var(--muted); }
+.locked .lk { font-size: 34px; width: 64px; height: 64px; display: grid; place-items: center; margin: 0 auto; border: 2px solid var(--ink); border-radius: 50%; }
+.locked h3 { color: var(--ink); font-size: 17px; margin: 12px 0 4px; }
+.locked p { margin: 0 auto; max-width: 320px; font-size: 14px; line-height: 1.8; }
+.reqbtns { display: inline-flex; gap: 6px; flex: none; }
+.reqdot { display: inline-block; min-width: 16px; height: 16px; line-height: 16px; padding: 0 4px; margin-left: 4px; border-radius: 99px; background: #ff3040; color: #fff; font-size: 10px; font-weight: 700; text-align: center; vertical-align: 2px; }
+
 /* Google ログイン */
 .gbtn { display: inline-flex; align-items: center; gap: 10px; background: #fff; color: #1f1f1f; border: 1px solid #dadce0; }
 .gbtn:hover { background: #f8f9fa; }
