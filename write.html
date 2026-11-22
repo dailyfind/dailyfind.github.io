@@ -104,9 +104,11 @@
     <ol>
       <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub の「鍵を作る」ページ</a>を開く</li>
       <li>名前は <code>daily-find</code>、期限は好きな長さ（最長1年）</li>
-      <li>「Repository access」で <b>Only select repositories</b> → このサイトのリポジトリを選ぶ</li>
+      <li>「Resource owner」を <b>dailyfind</b> にする</li>
+      <li>「Repository access」で <b>Only select repositories</b> → <b>dailyfind.github.io</b> を選ぶ</li>
       <li>「Permissions」の <b>Contents</b> を <b>Read and write</b> にする</li>
       <li>「Generate token」を押して、出てきた鍵（<code>github_pat_</code>で始まる文字）をコピーし、下に貼る</li>
+      <li>「承認待ち（pending）」と出たら、<a href="https://github.com/organizations/dailyfind/settings/personal-access-token-requests" target="_blank" rel="noopener">dailyfind の承認ページ</a>で自分の鍵を承認する</li>
     </ol>
     <div class="row">
       <label>GitHub のユーザー名<input id="cOwner" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
