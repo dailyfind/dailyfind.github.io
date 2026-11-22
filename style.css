@@ -96,6 +96,34 @@ img { display: block; max-width: 100%; }
 .item .stars { font-size: 12px; }
 .empty { color: var(--muted); }
 
+/* ===== プレイリスト ===== */
+.pl-section { margin-bottom: 56px; }
+.pl-section .item .cover { aspect-ratio: 1 / 1; }
+.playlist { padding: 28px 0 40px; }
+.pl-head { display: grid; grid-template-columns: 180px 1fr; gap: 28px; align-items: end; padding-bottom: 24px; border-bottom: 1px solid var(--rule); }
+.pl-head .cover { aspect-ratio: 1 / 1; }
+.pl-head h2 { font-family: var(--serif); font-weight: 700; font-size: clamp(26px, 4vw, 40px); line-height: 1.3; margin: 8px 0 4px; }
+.pl-head .by { color: var(--muted); font-size: 14px; }
+.tracklist { list-style: none; margin: 0; padding: 0; }
+.tracklist li { display: grid; grid-template-columns: 32px 1fr auto auto; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--hair); }
+.tno { font-family: var(--display); font-weight: 700; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.tmain { display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center; text-decoration: none; min-width: 0; }
+.tmain .cover { aspect-ratio: 1 / 1; }
+.tmain .cover-en { font-size: 12px; }
+.tmain .cover-ja { display: none; }
+.tt { display: grid; min-width: 0; }
+.tt b { font-weight: 700; font-size: 16px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt small { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tmain:hover b { color: var(--accent); }
+.tracklist .stars { font-size: 12px; }
+.tlisten { font-size: 12px; font-weight: 700; text-decoration: none; border: 1px solid var(--hair); border-radius: 99px; padding: 4px 12px; white-space: nowrap; }
+.tlisten:hover { border-color: var(--ink); }
+@media (max-width: 560px) {
+  .pl-head { grid-template-columns: 110px 1fr; gap: 16px; }
+  .tracklist li { grid-template-columns: 24px 1fr auto; }
+  .tracklist .stars { display: none; }
+}
+
 /* ===== 検索・並び替え ===== */
 .tools { display: flex; gap: 12px; margin-bottom: 26px; flex-wrap: wrap; }
 .tools input, .tools select {

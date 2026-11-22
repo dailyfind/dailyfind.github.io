@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DAILY FIND</title>
+<!-- OG -->
+<link rel="alternate" type="application/rss+xml" title="DAILY FIND" href="/feed.xml">
 <!-- 【安全対策】このページが読み込んでよい相手を限定する -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -48,9 +50,64 @@
       </article>`;
   }
 
+  // ===== プレイリスト =====
+  // 「ALL SONGS」（音楽の記事ぜんぶ）＋ 書く画面で付けたプレイリスト名ごと
+  function playlists() {
+    const songs = picks.filter(p => p.category === "音楽");
+    const lists = songs.length ? [{ key: "all", name: "ALL SONGS", tracks: songs }] : [];
+    const byName = new Map();
+    for (const p of picks) {
+      const n = String(p.playlist || "").trim();
+      if (!n) continue;
+      if (!byName.has(n)) byName.set(n, []);
+      byName.get(n).push(p);
+    }
+    for (const [n, tracks] of byName) lists.push({ key: n, name: n, tracks });
+    return lists;
+  }
+  const plHash = l => "#pl:" + encodeURIComponent(l.key);
+
+  function playlistCards(lists) {
+    return `<div class="grid">${lists.map(l => `
+      <a class="item" href="${esc(plHash(l))}">
+        ${cover(l.tracks[0])}
+        <div class="kicker">PLAYLIST<span class="no">${l.tracks.length}曲</span></div>
+        <h4>${esc(l.name)}</h4>
+        <p>${esc(l.tracks.slice(0, 3).map(t => t.title).join(" / "))}${l.tracks.length > 3 ? " …" : ""}</p>
+      </a>`).join("")}</div>`;
+  }
+
+  function playlistView(l) {
+    const mins = l.tracks.length;
+    return `
+      <a class="back" href="#">← BACK TO TOP</a>
+      <section class="playlist">
+        <div class="pl-head">
+          ${cover(l.tracks[0])}
+          <div>
+            <div class="kicker">PLAYLIST</div>
+            <h2>${esc(l.name)}</h2>
+            <div class="by">${mins}曲 · DAILY FIND</div>
+          </div>
+        </div>
+        <ol class="tracklist">${l.tracks.map((p, i) => `
+          <li>
+            <span class="tno">${String(i + 1).padStart(2, "0")}</span>
+            <a class="tmain" href="#${esc(p.id)}">
+              ${cover(p)}
+              <span class="tt"><b>${esc(p.title)}</b><small>${esc(p.by || "")}</small></span>
+            </a>
+            ${stars(p.rating || 0)}
+            ${safeLink(p.link) ? `<a class="tlisten" href="${esc(safeLink(p.link))}" target="_blank" rel="noopener noreferrer">聴く ↗</a>` : `<span></span>`}
+          </li>`).join("")}
+        </ol>
+      </section>`;
+  }
+
   // シェアボタン（X / LINE / リンクをコピー）
+  // 記事ごとのページ（p/〇〇.html）を共有すると、X や LINE でジャケット付きのカードになる
   function share(p) {
-    const url = location.origin + location.pathname + "#" + encodeURIComponent(p.id);
+    const url = location.origin + "/p/" + encodeURIComponent(p.id) + ".html";
     const text = `DAILY FIND：${p.title}${p.oneline ? "｜" + p.oneline : ""}`;
     const u = encodeURIComponent(url), t = encodeURIComponent(text);
     return `
@@ -82,7 +139,7 @@
     const q = query.trim().toLowerCase();
     let list = (q || filter !== "ALL") ? picks : past;   // 検索・絞り込み中は今日の分も含める
     if (filter !== "ALL") list = list.filter(p => p.category === filter);
-    if (q) list = list.filter(p => [p.title, p.by, p.oneline, p.body, p.category, cat(p.category).en]
+    if (q) list = list.filter(p => [p.title, p.by, p.playlist, p.oneline, p.body, p.category, cat(p.category).en]
       .join(" ").toLowerCase().includes(q));
     list = [...list].sort(SORTS[sortBy]);
     document.getElementById("gridArea").innerHTML = (q && !list.length)
@@ -105,7 +162,12 @@
     const app = document.getElementById("app");
     if (!picks.length) { app.innerHTML = `<p class="empty" style="padding:40px 0">まだおすすめがありません。「記事を書く」画面から追加してください。</p>`; return; }
 
-    const single = picks.find(p => p.id === decodeURIComponent(location.hash.slice(1)));
+    const hash = decodeURIComponent(location.hash.slice(1));
+    if (hash.startsWith("pl:")) {
+      const l = playlists().find(x => x.key === hash.slice(3));
+      if (l) { app.innerHTML = playlistView(l); window.scrollTo(0, 0); return; }
+    }
+    const single = picks.find(p => p.id === hash);
     if (single) {
       app.innerHTML = `<a class="back" href="#">← BACK TO TOP</a>` + feature(single);
       bindShare(app);
@@ -115,7 +177,14 @@
 
     const [latest, ...past] = picks;
     const cats = ["ALL", ...new Set(picks.map(p => p.category))];
-    app.innerHTML = feature(latest) + (past.length ? `
+    const lists = playlists();
+    app.innerHTML = feature(latest) + (lists.length ? `
+      <section class="pl-section">
+        <div class="section-head">
+          <h3>Playlists<small>プレイリスト</small></h3>
+        </div>
+        ${playlistCards(lists)}
+      </section>` : "") + (past.length ? `
       <section>
         <div class="section-head">
           <h3>Back Issues<small>これまでのおすすめ</small></h3>

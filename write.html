@@ -155,6 +155,8 @@
       </div>
       <label><span>タイトル（作品名・お店の名前） <span class="req">*</span></span><input name="title" required placeholder="例：〇〇〇〇" autocomplete="off"></label>
       <label>作者・アーティスト・場所など<input name="by" placeholder="例：〇〇 著 / 東京・下北沢"></label>
+      <label>プレイリスト（なくてもOK・同じ名前の曲がまとまります）<input name="playlist" list="playlistNames" maxlength="40" placeholder="例：夕方に聴きたい曲" autocomplete="off"></label>
+      <datalist id="playlistNames"></datalist>
       <!-- label で囲むと、どの星を押しても1つ目の星が押されたことになるため div にしている -->
       <div class="lbl" role="group" aria-label="評価">評価<div class="rate" id="rate"></div></div>
       <label>ひとことで言うと？（大きく表示されます）<input name="oneline" maxlength="80" placeholder="例：夕日を見ながら聴きたい曲"></label>
@@ -193,7 +195,7 @@
 
   // ===== 新しい版が出ていたら自動で読み直す =====
   // （スマホは古い画面を最大10分ほど覚えているため）
-  const APP_VERSION = "7";
+  const APP_VERSION = "8";
 
   // 【安全対策】ほかのサイトの中に埋め込まれて開かれたら、画面を出さない（だまして押させる攻撃の防止）
   if (window.top !== window.self) { document.documentElement.innerHTML = ""; throw new Error("framed"); }
@@ -328,6 +330,9 @@
     $("clearImg").hidden = !p.image;
   }
   function drawList() {
+    // これまでに使ったプレイリスト名を候補に出す
+    const names = [...new Set(picks.map(p => (p.playlist || "").trim()).filter(Boolean))];
+    $("playlistNames").innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join("");
     $("list").innerHTML = picks.map(p => `
       <div class="entry ${p.id === editingId ? "editing" : ""}">
         ${cover(p)}
@@ -350,7 +355,7 @@
   function edit(id) {
     const p = picks.find(x => x.id === id); if (!p) return;
     editingId = id; rating = p.rating || 0; imageData = null; imageUrl = ""; removeImage = false; currentImage = p.image || "";
-    for (const k of ["date", "category", "title", "by", "oneline", "body", "link"]) F[k].value = p[k] || "";
+    for (const k of ["date", "category", "title", "by", "playlist", "oneline", "body", "link"]) F[k].value = p[k] || "";
     $("heading").textContent = "おすすめを編集する"; $("save").textContent = "更新する"; $("msg").textContent = "";
     closeSuggest(); updateHint(); drawRate(); drawPreview(); drawList();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -548,7 +553,7 @@
   form.onsubmit = async e => {
     e.preventDefault();
     const fields = {};
-    for (const k of ["date", "category", "title", "by", "oneline", "body", "link"]) fields[k] = F[k].value.trim();
+    for (const k of ["date", "category", "title", "by", "playlist", "oneline", "body", "link"]) fields[k] = F[k].value.trim();
     if (!fields.title || !/^\d{4}-\d{2}-\d{2}$/.test(fields.date)) return setMsg("日付とタイトルは必須です。", false);
     if (fields.link && !/^https?:\/\//i.test(fields.link)) return setMsg("リンクは https:// から始まるアドレスにしてください。", false);
     $("save").disabled = true; setMsg("GitHub に保存しています…", true);
